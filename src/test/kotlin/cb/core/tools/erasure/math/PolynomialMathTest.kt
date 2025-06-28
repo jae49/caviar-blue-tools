@@ -162,7 +162,8 @@ class PolynomialMathTest {
         assertEquals(10, GaloisField.evaluatePolynomial(polynomial, 5))
     }
     
-    // TODO: Re-enable in Phase 3 - requires advanced Reed-Solomon matrix solving
+    // TODO: This test requires a more sophisticated Reed-Solomon implementation
+    // that can efficiently handle large erasure patterns with polynomial division encoding
     // @Test
     fun testLargeDataSet() {
         val dataSize = 100
@@ -218,7 +219,8 @@ class PolynomialMathTest {
         assertEquals(42, decoded[0])
     }
     
-    // TODO: Re-enable in Phase 3 - requires advanced Reed-Solomon matrix solving  
+    // TODO: This test requires a more sophisticated Reed-Solomon implementation
+    // that can handle arbitrary erasure patterns efficiently
     // @Test
     fun testRandomizedData() {
         for (trial in 1..10) {

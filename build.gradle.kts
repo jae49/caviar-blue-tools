@@ -13,6 +13,7 @@ dependencies {
 
     // libs.versions.toml dependencies
     testImplementation(libs.junit)
+    implementation(libs.coroutines)
 
     // Align versions of all Kotlin components
     implementation(platform("org.jetbrains.kotlin:kotlin-bom"))

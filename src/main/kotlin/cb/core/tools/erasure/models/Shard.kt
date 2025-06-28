@@ -33,5 +33,6 @@ data class ShardMetadata(
     val originalSize: Long,
     val config: EncodingConfig,
     val checksum: String,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val chunkIndex: Int? = null
 )
