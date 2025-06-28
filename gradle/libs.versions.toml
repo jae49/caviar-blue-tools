@@ -1,0 +1,92 @@
+[versions]
+coroutines = "1.10.1"
+jackson = "2.18.2"
+derby = "10.15.2.0"
+mssql = "12.8.1.jre11"
+postgresql = "42.7.4"
+sqlite = "3.46.0.1"
+junit = "5.11.3"
+poi = "5.3.0"
+slf4j = "2.0.16"
+http4k = "5.26.0.0"
+tomcat = "11.0.2"
+tomcat9 = "9.0.100"
+logback = "8.0"
+bcprov = "1.79"
+pdfbox = "3.0.3"
+skiko = "0.8.15"
+imagej = "1.54k"
+zxing = "3.5.3"
+log4j2 = "2.24.3"
+rabbitmq = "5.21.0"
+gson = "2.11.0"
+commons-daemon = "1.4.0"
+commons-csv = "1.11.0"
+kluent = "1.73"
+jeromq = "0.6.0"
+barcode4j = "2.1"
+ibmmq = "9.4.0.0"
+
+[libraries]
+coroutines = {module="org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm", version.ref="coroutines"}
+jackson-core = {module="com.fasterxml.jackson.core:jackson-core", version.ref = "jackson"}
+jackson-databind = {module="com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson"}
+jackson-annotations = {module="com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson"}
+jackson-module-kotlin = {module="com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson"}
+jackson-jsr310 = {module="com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref="jackson"}
+jackson-dataformat-xml = {module="com.fasterxml.jackson.dataformat:jackson-dataformat-xml", version.ref="jackson"}
+mssql = {module="com.microsoft.sqlserver:mssql-jdbc", version.ref="mssql"}
+postgresql = {module="org.postgresql:postgresql", version.ref="postgresql"}
+sqlite = {module="org.xerial:sqlite-jdbc", version.ref="sqlite"}
+derby = {module="org.apache.derby:derby", version.ref="derby"}
+junit = {module="org.junit.jupiter:junit-jupiter", version.ref="junit"}
+poi = {module="org.apache.poi:poi", version.ref="poi"}
+poi-ooxml = {module="org.apache.poi:poi-ooxml", version.ref="poi"}
+slf4j-api = {module="org.slf4j:slf4j-api", version.ref="slf4j"}
+slf4j-simple = {module="org.slf4j:slf4j-simple", version.ref="slf4j"}
+log4jtoslf4j = {module="org.apache.logging.log4j:log4j-to-slf4j", version.ref="log4j2"}
+http4k-core = {module="org.http4k:http4k-core", version.ref="http4k"}
+http4k-multipart = {module="org.http4k:http4k-multipart", version.ref="http4k"}
+http4k-format-core = {module="org.http4k:http4k-format-core", version.ref="http4k"}
+http4k-format-jackson = {module="org.http4k:http4k-format-jackson", version.ref="http4k"}
+http4k-client-apache = {module="org.http4k:http4k-client-apache", version.ref="http4k"}
+http4k-template-handlebars = {module="org.http4k:http4k-template-handlebars", version.ref="http4k"}
+http4k-server-apache = {module="org.http4k:http4k-server-apache", version.ref="http4k"}
+http4k-testing-approval = {module="org.http4k:http4k-testing-approval", version.ref="http4k"}
+kluent = {module="org.amshove.kluent:kluent", version.ref="kluent"}
+tomcat-embed-core = {module="org.apache.tomcat.embed:tomcat-embed-core", version.ref="tomcat"}
+tomcat-embed-websocket = {module="org.apache.tomcat.embed:tomcat-embed-websocket", version.ref="tomcat"}
+tomcat9-embed-core = {module="org.apache.tomcat.embed:tomcat-embed-core", version.ref="tomcat9"}
+tomcat9-embed-jasper = {module="org.apache.tomcat.embed:tomcat-embed-jasper", version.ref="tomcat9"}
+tomcat9-embed-websocket = {module="org.apache.tomcat.embed:tomcat-embed-websocket", version.ref="tomcat9"}
+tomcat9-dbcp = {module="org.apache.tomcat:tomcat-dbcp", version.ref="tomcat9"}
+slf4j-tomcat = {module="org.slf4j:jul-to-slf4j", version.ref="slf4j"}
+logback-encoder = {module="net.logstash.logback:logstash-logback-encoder", version.ref="logback"}
+bcprov-jdk18on = {module="org.bouncycastle:bcprov-jdk18on", version.ref="bcprov"}
+pdfbox = {module="org.apache.pdfbox:pdfbox", version.ref="pdfbox"}
+fontbox = {module="org.apache.pdfbox:fontbox", version.ref="pdfbox"}
+pdfbox-tools = {module="org.apache.pdfbox:pdfbox-tools", version.ref="pdfbox"}
+skiko = {module="org.jetbrains.skiko:skiko", version.ref="skiko"}
+skiko-runtime-linux = {module="org.jetbrains.skiko:skiko-awt-runtime-linux-x64", version.ref="skiko"}
+imagej = {module="net.imagej:ij", version.ref="imagej"}
+zxing-core = {module="com.google.zxing:core", version.ref="zxing"}
+zxing-javase = {module="com.google.zxing:javase", version.ref="zxing"}
+rabbitmq = {module="com.rabbitmq:amqp-client", version.ref="rabbitmq"}
+gson = {module="com.google.code.gson:gson", version.ref="gson"}
+jeromq = {module="org.zeromq:jeromq", version.ref="jeromq"}
+commons-daemon = {module="commons-daemon:commons-daemon", version.ref="commons-daemon"}
+commons-csv = {module="org.apache.commons:commons-csv", version.ref="commons-csv"}
+barcode4j = {module="net.sf.barcode4j:barcode4j", version.ref="barcode4j"}
+ibmmq = {module="com.ibm.mq:com.ibm.mq.allclient", version.ref="ibmmq" }
+
+[bundles]
+jackson = ["jackson-core", "jackson-databind", "jackson-annotations", "jackson-module-kotlin"]
+poi = ["poi", "poi-ooxml"]
+slf4j = ["slf4j-api", "slf4j-simple"]
+http4k = ["http4k-core", "http4k-multipart", "http4k-format-core", "http4k-format-jackson", "http4k-client-apache", "http4k-template-handlebars", "http4k-server-apache", "http4k-testing-approval"]
+tomcat = ["tomcat-embed-core", "tomcat-embed-websocket"]
+tomcat9 = ["tomcat9-embed-core", "tomcat9-embed-jasper", "tomcat9-embed-websocket", "tomcat9-dbcp"]
+tomcat-logging = ["slf4j-tomcat", "logback-encoder"]
+pdfbox = ["pdfbox", "fontbox", "pdfbox-tools"]
+zxing = ["zxing-core", "zxing-javase"]
+

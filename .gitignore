@@ -1,0 +1,48 @@
+# Include Gradle libs.versions.toml
+!gradle/libs.versions.toml
+
+# Ignore Gradle GUI config
+**/gradle-app.setting
+
+# Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
+!**/gradle-wrapper.jar
+
+# Ignore Kate swap files
+**/*.kate-swp
+
+# Cache of project
+**/.gradletasknamecache
+
+# # Work around https://youtrack.jetbrains.com/issue/IDEA-116898
+# gradle/wrapper/gradle-wrapper.properties
+
+# Keep gradle temporary files out of repo
+**/.gradle
+
+# Keep generated binaries out of repo
+**/bin
+**/obj
+**/build
+**/out
+
+# Ignore VSCode files
+**/.vscode
+
+# Ignore Intellij IDEA project files
+# Generate as needed, but keep out of repo
+**/.idea
+**/*.iml
+**/*.iws
+**/*.ipr
+
+# Ignore Eclipse project files
+# Generate as needed, but keep out of repo
+**/.classpath
+**/.project
+**/.settings
+
+# Ignore tomcat runtime files
+**/tomcat.*
+
+# Ignore references folder
+**/references
