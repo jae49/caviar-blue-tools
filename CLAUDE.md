@@ -16,6 +16,10 @@ This is a Kotlin project that provides library classes and functions for special
 - Resource management with `runCatching`
 - Extension functions for common operations
 
+### Project Phase Completion Guidelines
+- When implementing any phase in a plan that involves coding, one of the requirements for considering a phase complete is that the code builds and all tests pass
+- If a phase is taking on too much or becoming too complex, change the plan to include more phases
+
 ### Package structure
 - Root package name cb.core.tools
 - Feature based with package names by category and then specific features.  Model packages are contained within categories
