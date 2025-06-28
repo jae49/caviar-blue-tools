@@ -44,8 +44,8 @@ object GaloisField {
     }
     
     fun power(base: Int, exponent: Int): Int {
-        if (base == 0) return 0
         if (exponent == 0) return 1
+        if (base == 0) return 0
         return expTable[(logTable[base] * exponent) % 255]
     }
     
@@ -90,20 +90,23 @@ object GaloisField {
     fun dividePolynomial(dividend: IntArray, divisor: IntArray): Pair<IntArray, IntArray> {
         require(divisor.isNotEmpty() && divisor.last() != 0) { "Invalid divisor polynomial" }
         
-        val quotient = IntArray(maxOf(0, dividend.size - divisor.size + 1))
+        if (dividend.size < divisor.size) {
+            return Pair(intArrayOf(0), dividend.copyOf())
+        }
+        
+        val quotient = IntArray(dividend.size - divisor.size + 1)
         val remainder = dividend.copyOf()
         
         val leadCoeff = divisor.last()
-        val divisorDegree = divisor.size - 1
         
         for (i in quotient.indices.reversed()) {
-            val remainderDegree = remainder.size - 1 - i
-            if (remainderDegree >= divisorDegree && remainder[remainder.size - 1 - i] != 0) {
-                val coeff = divide(remainder[remainder.size - 1 - i], leadCoeff)
+            val remainderPos = remainder.size - 1 - (quotient.size - 1 - i)
+            if (remainderPos >= 0 && remainder[remainderPos] != 0) {
+                val coeff = divide(remainder[remainderPos], leadCoeff)
                 quotient[i] = coeff
                 
                 for (j in divisor.indices) {
-                    val pos = remainder.size - 1 - i - (divisor.size - 1 - j)
+                    val pos = remainderPos - (divisor.size - 1 - j)
                     if (pos >= 0) {
                         remainder[pos] = subtract(remainder[pos], multiply(coeff, divisor[j]))
                     }
@@ -111,7 +114,7 @@ object GaloisField {
             }
         }
         
-        val trimmedRemainder = remainder.dropLastWhile { it == 0 }.toIntArray()
+        val trimmedRemainder = remainder.dropWhile { it == 0 }.toIntArray()
         return Pair(quotient, if (trimmedRemainder.isEmpty()) intArrayOf(0) else trimmedRemainder)
     }
 }

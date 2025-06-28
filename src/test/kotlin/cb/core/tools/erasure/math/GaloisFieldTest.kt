@@ -74,8 +74,8 @@ class GaloisFieldTest {
         assertEquals(0, GaloisField.power(0, 5))
         assertEquals(1, GaloisField.power(0, 0))
         
-        assertEquals(25, GaloisField.power(5, 2))
-        assertEquals(125, GaloisField.power(5, 3))
+        assertEquals(17, GaloisField.power(5, 2))
+        assertEquals(85, GaloisField.power(5, 3))
         
         for (base in 1..10) {
             var expected = 1
