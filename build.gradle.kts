@@ -27,5 +27,26 @@ dependencies {
 }
 
 tasks.test {
+    useJUnitPlatform {
+        excludeTags("slow")
+    }
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
+}
+
+// Create a separate test task for slow/performance tests
+tasks.register<Test>("slowTests") {
     useJUnitPlatform()
+    group = "verification"
+    description = "Runs slow integration and performance tests"
+    
+    // Include only tests marked with @Tag("slow")
+    useJUnitPlatform {
+        includeTags("slow")
+    }
+    
+    testLogging {
+        events("passed", "skipped", "failed")
+    }
 }

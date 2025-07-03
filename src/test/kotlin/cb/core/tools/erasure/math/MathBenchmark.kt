@@ -2,7 +2,9 @@ package cb.core.tools.erasure.math
 
 import kotlin.system.measureTimeMillis
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Tag
 
+@Tag("slow")
 class MathBenchmark {
     
     @Test

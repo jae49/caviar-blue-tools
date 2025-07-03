@@ -16,7 +16,10 @@ sealed class ReconstructionResult {
         }
     }
     
-    data class Failure(val error: ReconstructionError) : ReconstructionResult()
+    data class Failure(
+        val error: ReconstructionError,
+        val message: String? = null
+    ) : ReconstructionResult()
     data class Partial(val recoveredBytes: Long, val totalBytes: Long) : ReconstructionResult()
 }
 
