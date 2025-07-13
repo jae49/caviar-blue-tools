@@ -68,7 +68,7 @@ class ShamirSecretSharingTest {
         val validationResult = sss.validateShares(emptyList())
         
         assertTrue(validationResult is SSSResult.Failure)
-        assertEquals(SSSError.INVALID_SHARE, (validationResult as SSSResult.Failure).error)
+        assertEquals(SSSError.INSUFFICIENT_SHARES, (validationResult as SSSResult.Failure).error)
     }
     
     @Test

@@ -20,7 +20,6 @@ class ShareCorruptionTest {
     private val sss = ShamirSecretSharing()
     
     @Test
-    @Disabled("Requires hash-based integrity checking - Phase 4")
     fun `reconstruct should fail with bit-flipped share data`() {
         val config = SSSConfig(3, 5)
         val secret = "Test corruption detection".toByteArray()
@@ -47,7 +46,6 @@ class ShareCorruptionTest {
     }
     
     @Test
-    @Disabled("Requires hash-based integrity checking - Phase 4")
     fun `reconstruct should fail with byte-substituted share data`() {
         val config = SSSConfig(3, 5)
         val secret = "Byte substitution test".toByteArray()
@@ -97,7 +95,6 @@ class ShareCorruptionTest {
     }
     
     @Test
-    @Disabled("Requires hash-based integrity checking - Phase 4")
     fun `reconstruct should fail with shares from different split operations`() {
         val config = SSSConfig(3, 5)
         val secret1 = "First secret".toByteArray()
@@ -119,11 +116,10 @@ class ShareCorruptionTest {
         assertFalse(reconstructResult is SSSResult.Success)
         assertTrue(reconstructResult is SSSResult.Failure)
         val error = reconstructResult as SSSResult.Failure
-        assertTrue(error.message.contains("hash", ignoreCase = true))
+        assertTrue(error.message.contains("mismatch", ignoreCase = true))
     }
     
     @Test
-    @Disabled("Requires metadata validation - Phase 4")
     fun `reconstruct should fail with corrupted metadata`() {
         val config = SSSConfig(3, 5)
         val secret = "Metadata corruption test".toByteArray()
@@ -133,24 +129,28 @@ class ShareCorruptionTest {
         
         val shares = (splitResult as SSSResult.Success).value.shares.toMutableList()
         
-        // Corrupt the metadata
+        // Corrupt the metadata with proper hash size for init validation
         val corruptedMetadata = ShareMetadata(
             threshold = shares[0].metadata.threshold,
             totalShares = shares[0].metadata.totalShares,
             secretSize = shares[0].metadata.secretSize,
-            secretHash = "corrupted_hash".toByteArray(), // Wrong hash
+            secretHash = ByteArray(32) { 0xFF.toByte() }, // Wrong hash but correct size
             timestamp = shares[0].metadata.timestamp,
             shareSetId = "corrupted_id"
         )
         
-        shares[0] = shares[0].copy(metadata = corruptedMetadata)
+        shares[0] = SecretShare(
+            index = shares[0].index,
+            data = shares[0].data,
+            metadata = corruptedMetadata,
+            dataHash = shares[0].dataHash // Keep original hash to pass init validation
+        )
         
         val reconstructResult = sss.reconstruct(shares.take(3))
         assertFalse(reconstructResult is SSSResult.Success)
     }
     
     @Test
-    @Disabled("Requires share size validation - Phase 4")
     fun `reconstruct should fail with mismatched secret sizes in metadata`() {
         val config = SSSConfig(3, 5)
         val secret = "Size mismatch test".toByteArray()
@@ -160,18 +160,24 @@ class ShareCorruptionTest {
         
         val shares = (splitResult as SSSResult.Success).value.shares.toMutableList()
         
-        // Modify secret size in metadata
+        // Create metadata with mismatched secret size by extending data to match
+        val originalData = shares[1].data
+        val extendedData = originalData + ByteArray(10) { 0.toByte() }
         val corruptedMetadata = shares[1].metadata.copy(
             secretSize = shares[1].metadata.secretSize + 10
         )
-        shares[1] = shares[1].copy(metadata = corruptedMetadata)
+        shares[1] = SecretShare(
+            index = shares[1].index,
+            data = extendedData,
+            metadata = corruptedMetadata,
+            dataHash = shares[1].dataHash // Keep original hash to make integrity check fail
+        )
         
         val reconstructResult = sss.reconstruct(shares.take(3))
         assertFalse(reconstructResult is SSSResult.Success)
     }
     
     @Test
-    @Disabled("Requires share size validation - Phase 4")
     fun `reconstruct should fail with truncated share data`() {
         val config = SSSConfig(3, 5)
         val secret = "Truncation test with some data".toByteArray()
@@ -181,16 +187,21 @@ class ShareCorruptionTest {
         
         val shares = (splitResult as SSSResult.Success).value.shares.toMutableList()
         
-        // Truncate the data of one share
+        // Truncate the data of one share while keeping original metadata to bypass init validation
         val truncatedData = shares[0].data.sliceArray(0 until shares[0].data.size / 2)
-        shares[0] = shares[0].copy(data = truncatedData)
+        val originalMetadata = shares[0].metadata.copy(secretSize = truncatedData.size)
+        shares[0] = SecretShare(
+            index = shares[0].index,
+            data = truncatedData,
+            metadata = originalMetadata,
+            dataHash = shares[0].dataHash // Keep original hash to pass init validation
+        )
         
         val reconstructResult = sss.reconstruct(shares.take(3))
         assertFalse(reconstructResult is SSSResult.Success)
     }
     
     @Test
-    @Disabled("Requires share size validation - Phase 4")
     fun `reconstruct should fail with extended share data`() {
         val config = SSSConfig(3, 5)
         val secret = "Extension test".toByteArray()
@@ -200,9 +211,15 @@ class ShareCorruptionTest {
         
         val shares = (splitResult as SSSResult.Success).value.shares.toMutableList()
         
-        // Extend the data of one share
+        // Extend the data of one share while keeping original metadata to bypass init validation
         val extendedData = shares[2].data + byteArrayOf(0xFF.toByte(), 0xFF.toByte())
-        shares[2] = shares[2].copy(data = extendedData)
+        val originalMetadata = shares[2].metadata.copy(secretSize = extendedData.size)
+        shares[2] = SecretShare(
+            index = shares[2].index,
+            data = extendedData,
+            metadata = originalMetadata,
+            dataHash = shares[2].dataHash // Keep original hash to pass init validation
+        )
         
         val reconstructResult = sss.reconstruct(shares.take(3))
         assertFalse(reconstructResult is SSSResult.Success)
@@ -232,7 +249,6 @@ class ShareCorruptionTest {
     }
     
     @Test
-    @Disabled("Requires share data validation - Phase 4")
     fun `multiple bit errors should be detected`() {
         val config = SSSConfig(3, 5)
         val secret = "Multiple bit error test".toByteArray()
@@ -255,7 +271,6 @@ class ShareCorruptionTest {
     }
     
     @Test
-    @Disabled("Requires hash-based integrity checking - Phase 4")
     fun `reconstruct should fail with reordered bytes in share`() {
         val config = SSSConfig(3, 5)
         val secret = "Byte reordering test".toByteArray()
@@ -282,7 +297,6 @@ class ShareCorruptionTest {
     }
     
     @Test
-    @Disabled("Requires hash-based integrity checking - Phase 4")
     fun `reconstruct should fail with all shares having same minor corruption`() {
         val config = SSSConfig(3, 5)
         val secret = "Systematic corruption test".toByteArray()

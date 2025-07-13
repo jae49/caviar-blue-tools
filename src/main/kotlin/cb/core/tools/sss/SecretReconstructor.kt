@@ -3,6 +3,7 @@ package cb.core.tools.sss
 import cb.core.tools.erasure.math.GaloisField
 import cb.core.tools.erasure.math.PolynomialMath
 import cb.core.tools.sss.models.*
+import cb.core.tools.sss.validation.ShareValidator
 
 /**
  * Core implementation for reconstructing secrets from shares using Shamir Secret Sharing.
@@ -23,42 +24,23 @@ class SecretReconstructor {
         shares: List<SecretShare>,
         metadata: ShareMetadata? = null
     ): SSSResult<ByteArray> {
-        // Validate we have shares
-        if (shares.isEmpty()) {
-            return SSSResult.Failure(
-                SSSError.INSUFFICIENT_SHARES,
-                "No shares provided for reconstruction"
-            )
+        // Validate shares using ShareValidator
+        val validationResult = ShareValidator.validateSharesForReconstruction(shares)
+        if (validationResult is SSSResult.Failure) {
+            return when {
+                validationResult.message.contains("hash", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                validationResult.message.contains("insufficient", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INSUFFICIENT_SHARES, validationResult.message)
+                validationResult.message.contains("mismatch", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INCOMPATIBLE_SHARES, validationResult.message)
+                else -> 
+                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+            }
         }
         
-        // Extract threshold from metadata or infer from shares
-        val threshold = metadata?.threshold ?: shares.size
-        
-        // Validate sufficient shares
-        if (shares.size < threshold) {
-            return SSSResult.Failure(
-                SSSError.INSUFFICIENT_SHARES,
-                "Insufficient shares: provided ${shares.size}, required $threshold"
-            )
-        }
-        
-        // Validate share indices are unique
-        val uniqueIndices = shares.map { it.index }.toSet()
-        if (uniqueIndices.size != shares.size) {
-            return SSSResult.Failure(
-                SSSError.INVALID_SHARE,
-                "Duplicate share indices found"
-            )
-        }
-        
-        // Validate all shares have the same data length
-        val dataLengths = shares.map { it.data.size }.toSet()
-        if (dataLengths.size > 1) {
-            return SSSResult.Failure(
-                SSSError.INCOMPATIBLE_SHARES,
-                "Inconsistent share data sizes: $dataLengths"
-            )
-        }
+        // Extract threshold from first share's metadata
+        val threshold = shares.first().metadata.threshold
         
         // Use only the first 'threshold' shares for reconstruction
         val sharesToUse = shares.take(threshold)
@@ -76,12 +58,11 @@ class SecretReconstructor {
             reconstructedSecret[byteIndex] = secretByte.toByte()
         }
         
-        // Validate against metadata if provided
-        if (metadata != null) {
-            val validationResult = validateReconstruction(reconstructedSecret, metadata)
-            if (validationResult is SSSResult.Failure) {
-                return validationResult
-            }
+        // Validate against share metadata
+        val shareMetadata = shares.first().metadata
+        val reconstructionResult = validateReconstruction(reconstructedSecret, shareMetadata)
+        if (reconstructionResult is SSSResult.Failure) {
+            return reconstructionResult
         }
         
         return SSSResult.Success(reconstructedSecret)

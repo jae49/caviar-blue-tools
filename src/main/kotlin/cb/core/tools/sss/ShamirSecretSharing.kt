@@ -1,6 +1,7 @@
 package cb.core.tools.sss
 
 import cb.core.tools.sss.models.*
+import cb.core.tools.sss.validation.ShareValidator
 
 /**
  * Main API interface for Shamir Secret Sharing operations.
@@ -107,41 +108,28 @@ class ShamirSecretSharing(
         shares: List<SecretShare>,
         metadata: ShareMetadata? = null
     ): SSSResult<Unit> {
-        // Check for empty shares
-        if (shares.isEmpty()) {
-            return SSSResult.Failure(SSSError.INVALID_SHARE, "No shares provided")
-        }
-        
-        // Check for unique indices
-        val indices = shares.map { it.index }
-        if (indices.size != indices.toSet().size) {
-            return SSSResult.Failure(SSSError.INVALID_SHARE, "Duplicate share indices found")
-        }
-        
-        // Check for consistent data sizes
-        val dataSizes = shares.map { it.data.size }.toSet()
-        if (dataSizes.size > 1) {
-            return SSSResult.Failure(
-                SSSError.INCOMPATIBLE_SHARES,
-                "Inconsistent share data sizes: $dataSizes"
-            )
-        }
-        
-        // Check against metadata if provided
-        if (metadata != null) {
-            if (shares.size < metadata.threshold) {
-                return SSSResult.Failure(
-                    SSSError.INSUFFICIENT_SHARES,
-                    "Insufficient shares: ${shares.size} < ${metadata.threshold}"
-                )
+        // Use ShareValidator for comprehensive validation
+        val validationResult = ShareValidator.validateSharesForReconstruction(shares)
+        if (validationResult is SSSResult.Failure) {
+            return when {
+                validationResult.message.contains("hash", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                validationResult.message.contains("insufficient", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INSUFFICIENT_SHARES, validationResult.message)
+                validationResult.message.contains("mismatch", ignoreCase = true) -> 
+                    SSSResult.Failure(SSSError.INCOMPATIBLE_SHARES, validationResult.message)
+                else -> 
+                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
             }
-            
-            // Validate share indices are within expected range
-            val invalidIndices = indices.filter { it < 1 || it > metadata.totalShares }
-            if (invalidIndices.isNotEmpty()) {
+        }
+        
+        // Additional validation against provided metadata if present
+        if (metadata != null) {
+            val shareMetadata = shares.first().metadata
+            if (!shareMetadata.isCompatibleWith(metadata)) {
                 return SSSResult.Failure(
-                    SSSError.INVALID_SHARE,
-                    "Invalid share indices: $invalidIndices"
+                    SSSError.INCOMPATIBLE_SHARES,
+                    "Shares metadata incompatible with provided metadata"
                 )
             }
         }
