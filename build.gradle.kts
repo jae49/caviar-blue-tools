@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") version "2.1.21"
+    id("org.jetbrains.dokka") version "2.0.0"
 }
 
 group = "cb.core"
@@ -49,4 +50,32 @@ tasks.register<Test>("slowTests") {
     testLogging {
         events("passed", "skipped", "failed")
     }
+}
+
+// Configure Dokka for HTML documentation
+tasks.dokkaHtml {
+    outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+    
+    dokkaSourceSets {
+        configureEach {
+            includeNonPublic.set(false)
+            reportUndocumented.set(true)
+            skipEmptyPackages.set(true)
+            
+            // Link to JDK documentation
+            jdkVersion.set(17)
+            
+            // Source links
+            sourceLink {
+                localDirectory.set(file("src/main/kotlin"))
+                remoteUrl.set(uri("https://github.com/your-org/caviar-blue-tools/tree/main/src/main/kotlin").toURL())
+                remoteLineSuffix.set("#L")
+            }
+        }
+    }
+}
+
+// Configure Dokka for Javadoc (for Maven compatibility)
+tasks.dokkaJavadoc {
+    outputDirectory.set(layout.buildDirectory.dir("dokka/javadoc"))
 }
