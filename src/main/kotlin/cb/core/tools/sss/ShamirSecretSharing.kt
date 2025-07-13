@@ -2,6 +2,8 @@ package cb.core.tools.sss
 
 import cb.core.tools.sss.models.*
 import cb.core.tools.sss.validation.ShareValidator
+import cb.core.tools.sss.security.SecureMemory
+import cb.core.tools.sss.security.SecureErrorHandler
 
 /**
  * Main API interface for Shamir Secret Sharing operations.
@@ -38,8 +40,23 @@ class ShamirSecretSharing(
      * @return Success with shares and metadata, or Failure with error details
      */
     fun split(secret: ByteArray, config: SSSConfig): SSSResult<SplitResult> {
-        return splitter.split(secret, config).map { splitResult ->
-            SplitResult(splitResult.shares, splitResult.metadata)
+        // Create defensive copy to avoid modifying caller's data
+        val secretCopy = SecureMemory.defensiveCopy(secret)
+        
+        return try {
+            splitter.split(secretCopy, config).map { splitResult ->
+                SplitResult(splitResult.shares, splitResult.metadata)
+            }
+        } catch (e: Exception) {
+            // Handle unexpected exceptions securely
+            val category = SecureErrorHandler.ErrorCategory.OPERATION_FAILED
+            SSSResult.Failure(
+                SSSError.VALIDATION_FAILED,
+                SecureErrorHandler.sanitizeError(e, category)
+            )
+        } finally {
+            // Always clear the secret copy
+            SecureMemory.clear(secretCopy)
         }
     }
     
@@ -70,7 +87,23 @@ class ShamirSecretSharing(
         shares: List<SecretShare>,
         metadata: ShareMetadata? = null
     ): SSSResult<ByteArray> {
-        return reconstructor.reconstruct(shares, metadata)
+        return try {
+            reconstructor.reconstruct(shares, metadata)
+        } catch (e: Exception) {
+            // Handle unexpected exceptions securely
+            val category = when {
+                e.message?.contains("share", ignoreCase = true) == true -> 
+                    SecureErrorHandler.ErrorCategory.INVALID_SHARE_FORMAT
+                e.message?.contains("insufficient", ignoreCase = true) == true -> 
+                    SecureErrorHandler.ErrorCategory.INSUFFICIENT_SHARES
+                else -> 
+                    SecureErrorHandler.ErrorCategory.OPERATION_FAILED
+            }
+            SSSResult.Failure(
+                SSSError.RECONSTRUCTION_FAILED,
+                SecureErrorHandler.sanitizeError(e, category)
+            )
+        }
     }
     
     /**
@@ -111,16 +144,31 @@ class ShamirSecretSharing(
         // Use ShareValidator for comprehensive validation
         val validationResult = ShareValidator.validateSharesForReconstruction(shares)
         if (validationResult is SSSResult.Failure) {
-            return when {
+            val errorCategory = when {
                 validationResult.message.contains("hash", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INVALID_SHARE_FORMAT
                 validationResult.message.contains("insufficient", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INSUFFICIENT_SHARES, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INSUFFICIENT_SHARES
                 validationResult.message.contains("mismatch", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INCOMPATIBLE_SHARES, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INCOMPATIBLE_SHARES
                 else -> 
-                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.VALIDATION_FAILED
             }
+            
+            val errorType = when (errorCategory) {
+                SecureErrorHandler.ErrorCategory.INVALID_SHARE_FORMAT -> SSSError.INVALID_SHARE
+                SecureErrorHandler.ErrorCategory.INSUFFICIENT_SHARES -> SSSError.INSUFFICIENT_SHARES
+                SecureErrorHandler.ErrorCategory.INCOMPATIBLE_SHARES -> SSSError.INCOMPATIBLE_SHARES
+                else -> SSSError.INVALID_SHARE
+            }
+            
+            return SSSResult.Failure(
+                errorType,
+                SecureErrorHandler.sanitizeError(
+                    IllegalArgumentException(validationResult.message),
+                    errorCategory
+                )
+            )
         }
         
         // Additional validation against provided metadata if present

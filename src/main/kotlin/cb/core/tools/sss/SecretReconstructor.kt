@@ -4,6 +4,7 @@ import cb.core.tools.erasure.math.GaloisField
 import cb.core.tools.erasure.math.PolynomialMath
 import cb.core.tools.sss.models.*
 import cb.core.tools.sss.validation.ShareValidator
+import cb.core.tools.sss.security.SecureErrorHandler
 
 /**
  * Core implementation for reconstructing secrets from shares using Shamir Secret Sharing.
@@ -27,16 +28,30 @@ class SecretReconstructor {
         // Validate shares using ShareValidator
         val validationResult = ShareValidator.validateSharesForReconstruction(shares)
         if (validationResult is SSSResult.Failure) {
-            return when {
+            // Map to secure error messages based on error type
+            val errorCategory = when {
                 validationResult.message.contains("hash", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INVALID_SHARE_FORMAT
                 validationResult.message.contains("insufficient", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INSUFFICIENT_SHARES, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INSUFFICIENT_SHARES
                 validationResult.message.contains("mismatch", ignoreCase = true) -> 
-                    SSSResult.Failure(SSSError.INCOMPATIBLE_SHARES, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.INCOMPATIBLE_SHARES
                 else -> 
-                    SSSResult.Failure(SSSError.INVALID_SHARE, validationResult.message)
+                    SecureErrorHandler.ErrorCategory.VALIDATION_FAILED
             }
+            
+            val errorType = when (errorCategory) {
+                SecureErrorHandler.ErrorCategory.INVALID_SHARE_FORMAT -> SSSError.INVALID_SHARE
+                SecureErrorHandler.ErrorCategory.INSUFFICIENT_SHARES -> SSSError.INSUFFICIENT_SHARES
+                SecureErrorHandler.ErrorCategory.INCOMPATIBLE_SHARES -> SSSError.INCOMPATIBLE_SHARES
+                else -> SSSError.INVALID_SHARE
+            }
+            
+            val secureMessage = SecureErrorHandler.sanitizeError(
+                IllegalArgumentException(validationResult.message), 
+                errorCategory
+            )
+            return SSSResult.Failure(errorType, secureMessage)
         }
         
         // Extract threshold from first share's metadata
@@ -118,18 +133,20 @@ class SecretReconstructor {
     ): SSSResult<Unit> {
         // Validate secret size
         if (secret.size != metadata.secretSize) {
-            return SSSResult.Failure(
-                SSSError.RECONSTRUCTION_FAILED,
-                "Reconstructed secret size mismatch: expected ${metadata.secretSize}, got ${secret.size}"
+            val secureMessage = SecureErrorHandler.sanitizeError(
+                IllegalArgumentException("Size mismatch"),
+                SecureErrorHandler.ErrorCategory.VALIDATION_FAILED
             )
+            return SSSResult.Failure(SSSError.RECONSTRUCTION_FAILED, secureMessage)
         }
         
         // Validate secret hash
         if (!metadata.validateSecret(secret)) {
-            return SSSResult.Failure(
-                SSSError.RECONSTRUCTION_FAILED,
-                "Reconstructed secret hash does not match expected hash"
+            val secureMessage = SecureErrorHandler.sanitizeError(
+                IllegalArgumentException("Hash mismatch"),
+                SecureErrorHandler.ErrorCategory.VALIDATION_FAILED
             )
+            return SSSResult.Failure(SSSError.RECONSTRUCTION_FAILED, secureMessage)
         }
         
         return SSSResult.Success(Unit)

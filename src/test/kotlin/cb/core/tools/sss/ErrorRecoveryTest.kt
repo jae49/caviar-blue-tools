@@ -151,8 +151,7 @@ class ErrorRecoveryTest {
         
         assertTrue(result is SSSResult.Failure)
         val error = result as SSSResult.Failure
-        assertTrue(error.message.contains("empty", ignoreCase = true) ||
-                  error.message.contains("no shares", ignoreCase = true))
+        assertTrue(error.message.contains("Insufficient", ignoreCase = true))
     }
     
     @Test

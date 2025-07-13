@@ -5,6 +5,7 @@ import cb.core.tools.sss.crypto.PolynomialGenerator
 import cb.core.tools.sss.crypto.SecureRandomGenerator
 import cb.core.tools.sss.models.*
 import cb.core.tools.sss.validation.ConfigValidator
+import cb.core.tools.sss.security.SecureMemory
 import java.time.Instant
 
 /**
@@ -50,13 +51,23 @@ class SecretSplitter(
         // Generate polynomials for each byte of the secret
         val polynomials = polynomialGenerator.generateCoefficientsForSecret(secret, config)
         
-        // Create metadata for validation
-        val metadata = ShareMetadata.create(secret, config)
-        
-        // Create shares by evaluating polynomials at x = 1, 2, ..., n
-        val shares = createShares(polynomials, config, metadata)
-        
-        return SSSResult.Success(SplitResult(shares, metadata))
+        try {
+            // Create metadata for validation
+            val metadata = ShareMetadata.create(secret, config)
+            
+            // Create shares by evaluating polynomials at x = 1, 2, ..., n
+            val shares = createShares(polynomials, config, metadata)
+            
+            return SSSResult.Success(SplitResult(shares, metadata))
+        } finally {
+            // Clear polynomial coefficients from memory
+            polynomials.forEach { coefficients ->
+                // Clear the coefficient array (contains secret as first coefficient)
+                for (i in coefficients.indices) {
+                    coefficients[i] = 0
+                }
+            }
+        }
     }
     
     /**

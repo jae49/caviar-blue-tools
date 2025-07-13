@@ -42,7 +42,7 @@ class ShareCorruptionTest {
         assertFalse(reconstructResult is SSSResult.Success)
         assertTrue(reconstructResult is SSSResult.Failure)
         val error = reconstructResult as SSSResult.Failure
-        assertTrue(error.message.contains("hash", ignoreCase = true))
+        assertTrue(error.message.contains("Invalid share", ignoreCase = true))
     }
     
     @Test
@@ -116,7 +116,7 @@ class ShareCorruptionTest {
         assertFalse(reconstructResult is SSSResult.Success)
         assertTrue(reconstructResult is SSSResult.Failure)
         val error = reconstructResult as SSSResult.Failure
-        assertTrue(error.message.contains("mismatch", ignoreCase = true))
+        assertTrue(error.message.contains("Incompatible", ignoreCase = true))
     }
     
     @Test
