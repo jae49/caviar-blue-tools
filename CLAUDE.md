@@ -4,6 +4,12 @@
 
 This is a Kotlin project that provides library classes and functions for specialized tasks, with a complete Reed-Solomon Erasure Coding implementation.
 
+## License
+
+Copyright © 2025 John Engelman
+
+Licensed under the Apache License, Version 2.0. See LICENSE file for details.
+
 ## Core Architecture Patterns
 - Prefer JSON for data interchange
 - When working with database features, prefer generic sql that is usable in postgresql, sqlite and mssql
