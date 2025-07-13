@@ -42,6 +42,14 @@ data class ShareMetadata(
 
     /**
      * Checks if this metadata is compatible with another for share combination.
+     * 
+     * Metadata is compatible if all parameters match exactly, including:
+     * - Threshold and total shares configuration
+     * - Secret size and hash
+     * - Share set ID (ensures shares are from the same split operation)
+     * 
+     * @param other The metadata to compare with
+     * @return true if metadata is compatible for reconstruction
      */
     fun isCompatibleWith(other: ShareMetadata): Boolean {
         return threshold == other.threshold &&
@@ -53,6 +61,12 @@ data class ShareMetadata(
 
     /**
      * Validates if a reconstructed secret matches the expected hash.
+     * 
+     * Verifies both the size and SHA-256 hash of the reconstructed secret
+     * to ensure successful and accurate reconstruction.
+     * 
+     * @param secret The reconstructed secret bytes
+     * @return true if the secret matches expected size and hash
      */
     fun validateSecret(secret: ByteArray): Boolean {
         return secret.size == secretSize && 
@@ -61,6 +75,11 @@ data class ShareMetadata(
 
     /**
      * Serializes metadata to Base64 for embedding in shares.
+     * 
+     * Encodes all metadata fields into a pipe-delimited string, then Base64
+     * encodes the result for safe storage and transmission.
+     * 
+     * @return Base64-encoded metadata string
      */
     fun toBase64(): String {
         val parts = listOf(
@@ -104,6 +123,12 @@ data class ShareMetadata(
 
         /**
          * Computes SHA-256 hash of a secret.
+         * 
+         * Used to create a fingerprint of the original secret for integrity
+         * verification after reconstruction.
+         * 
+         * @param secret The secret data to hash
+         * @return 32-byte SHA-256 hash
          */
         fun computeSecretHash(secret: ByteArray): ByteArray {
             return digest.digest(secret)
@@ -111,6 +136,11 @@ data class ShareMetadata(
 
         /**
          * Generates a unique share set identifier.
+         * 
+         * Creates a unique ID using timestamp and random number to ensure
+         * shares from different split operations cannot be mixed.
+         * 
+         * @return Unique identifier string in format "timestamp-random"
          */
         fun generateShareSetId(): String {
             val timestamp = System.currentTimeMillis()
@@ -120,6 +150,13 @@ data class ShareMetadata(
 
         /**
          * Deserializes metadata from Base64.
+         * 
+         * Decodes a Base64 string back into ShareMetadata, parsing the
+         * pipe-delimited fields.
+         * 
+         * @param encoded Base64-encoded metadata string
+         * @return Deserialized ShareMetadata instance
+         * @throws IllegalArgumentException if format is invalid
          */
         fun fromBase64(encoded: String): ShareMetadata {
             val decoded = String(Base64.getDecoder().decode(encoded))
@@ -141,6 +178,13 @@ data class ShareMetadata(
 
         /**
          * Creates metadata for a secret and configuration.
+         * 
+         * Factory method that generates appropriate metadata including
+         * computing the secret hash and generating a unique share set ID.
+         * 
+         * @param secret The secret data being split
+         * @param config The configuration for splitting
+         * @return New ShareMetadata instance
          */
         fun create(secret: ByteArray, config: SSSConfig): ShareMetadata {
             return ShareMetadata(

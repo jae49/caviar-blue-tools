@@ -11,6 +11,16 @@ object ConfigValidator {
 
     /**
      * Validates a configuration for secret splitting.
+     * 
+     * Performs comprehensive validation including:
+     * - Threshold bounds (1 <= k <= n)
+     * - Total shares bounds (1 <= n <= 128)
+     * - Secret size limits (1 <= size <= configured max)
+     * - Field size compatibility (currently only GF(256))
+     * 
+     * @param config The configuration to validate
+     * @param secretSize The size of the secret to be split in bytes
+     * @return Success with validated config or Failure with error details
      */
     fun validateForSplitting(config: SSSConfig, secretSize: Int): SSSResult<SSSConfig> {
         // Check threshold bounds
@@ -89,6 +99,15 @@ object ConfigValidator {
 
     /**
      * Validates share indices are unique and within bounds.
+     * 
+     * Ensures that:
+     * - At least one index is provided
+     * - All indices are unique (no duplicates)
+     * - All indices are within [1, totalShares]
+     * 
+     * @param indices List of share indices to validate
+     * @param config Configuration defining valid index bounds
+     * @return Success with validated indices or Failure with error details
      */
     fun validateShareIndices(indices: List<Int>, config: SSSConfig): SSSResult<List<Int>> {
         if (indices.isEmpty()) {
@@ -122,6 +141,13 @@ object ConfigValidator {
 
     /**
      * Validates if enough shares are available for reconstruction.
+     * 
+     * Checks that the number of available shares meets or exceeds
+     * the threshold requirement.
+     * 
+     * @param shareCount Number of available shares
+     * @param threshold Minimum shares required
+     * @return Success if sufficient shares, Failure if insufficient
      */
     fun validateShareCount(shareCount: Int, threshold: Int): SSSResult<Int> {
         return when {
@@ -135,6 +161,14 @@ object ConfigValidator {
 
     /**
      * Validates cryptographic parameters.
+     * 
+     * Checks security-related configuration options:
+     * - Secure random usage (recommended for production)
+     * - Field size compatibility
+     * - Future: minimum threshold requirements, time restrictions
+     * 
+     * @param config Configuration with security parameters
+     * @return Success with validated config or Failure with security concerns
      */
     fun validateSecurityParameters(config: SSSConfig): SSSResult<SSSConfig> {
         // For now, we only support GF(256) with secure random
@@ -153,6 +187,13 @@ object ConfigValidator {
 
     /**
      * Performs comprehensive validation for a configuration.
+     * 
+     * Re-validates all configuration constraints and security parameters.
+     * This is redundant with SSSConfig's init validation but provides
+     * a Result-based API for consistency.
+     * 
+     * @param config The configuration to validate
+     * @return Success with validated config or Failure with validation errors
      */
     fun validate(config: SSSConfig): SSSResult<SSSConfig> {
         // This validation is already done in the SSSConfig init block,

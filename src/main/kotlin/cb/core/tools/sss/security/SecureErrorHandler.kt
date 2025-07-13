@@ -13,6 +13,9 @@ object SecureErrorHandler {
     
     /**
      * Categories of errors that are safe to expose to users.
+     * 
+     * Each category has a corresponding generic error message that
+     * doesn't reveal implementation details or sensitive data.
      */
     enum class ErrorCategory {
         INVALID_CONFIGURATION,
@@ -25,6 +28,14 @@ object SecureErrorHandler {
     
     /**
      * Maps detailed internal errors to secure external messages.
+     * 
+     * Converts potentially sensitive error details into generic messages
+     * that are safe to show to users without revealing implementation
+     * details or secret data.
+     * 
+     * @param exception The internal exception (not used in message)
+     * @param category The error category determining the message
+     * @return Generic error message safe for external consumption
      */
     fun sanitizeError(exception: Throwable, category: ErrorCategory): String {
         return when (category) {
@@ -50,6 +61,14 @@ object SecureErrorHandler {
     
     /**
      * Creates a secure exception that doesn't leak sensitive information.
+     * 
+     * The returned exception contains only a generic error message and
+     * does not include the original exception as a cause to prevent
+     * stack trace information leakage.
+     * 
+     * @param category The error category for message selection
+     * @param internalCause Original exception (logged internally only)
+     * @return Safe exception with generic error message
      */
     fun createSecureException(category: ErrorCategory, internalCause: Throwable? = null): IllegalArgumentException {
         val message = sanitizeError(internalCause ?: Exception(), category)
@@ -59,7 +78,17 @@ object SecureErrorHandler {
     
     /**
      * Validates that an error message doesn't contain sensitive information.
+     * 
+     * Checks for patterns that might reveal:
+     * - Specific numeric values (indices, sizes, coefficients)
+     * - Implementation details (byte positions, field elements)
+     * - Secret or share content
+     * - Cryptographic hashes
+     * 
      * Used in debug/test mode only.
+     * 
+     * @param message The error message to validate
+     * @return true if message appears safe, false if it may leak information
      */
     fun validateErrorMessage(message: String): Boolean {
         val sensitivePatterns = listOf(
@@ -90,7 +119,17 @@ object SecureErrorHandler {
     
     /**
      * Logs detailed error information securely (for internal debugging only).
-     * In production, this should write to a secure audit log.
+     * 
+     * In production, this should write to a secure audit log with:
+     * - Access controls
+     * - Encryption at rest
+     * - Audit trail integrity
+     * 
+     * Currently validates and sanitizes messages before logging.
+     * 
+     * @param category The error category
+     * @param details Detailed error information (will be sanitized)
+     * @param exception Optional exception for internal logging
      */
     fun logSecureError(category: ErrorCategory, details: String, exception: Throwable? = null) {
         // In production, this would write to a secure audit log

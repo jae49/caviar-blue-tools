@@ -42,6 +42,11 @@ data class SSSConfig(
 
     /**
      * Validates if a secret can be processed with this configuration.
+     * 
+     * Checks that the secret size is within allowed bounds (1 to secretMaxSize bytes).
+     * 
+     * @param secretSize The size of the secret in bytes
+     * @return true if the secret size is valid, false otherwise
      */
     fun validateSecretSize(secretSize: Int): Boolean {
         return secretSize in 1..secretMaxSize
@@ -49,12 +54,23 @@ data class SSSConfig(
 
     /**
      * Returns the number of redundant shares (n - k).
+     * 
+     * This represents how many shares can be lost while still being able to 
+     * reconstruct the secret. A higher redundancy provides more fault tolerance.
+     * 
+     * @return The number of shares that can be lost (totalShares - threshold)
      */
     val redundancy: Int
         get() = totalShares - threshold
 
     /**
      * Checks if this is a trivial configuration (k = 1 or k = n).
+     * 
+     * A configuration is considered trivial if:
+     * - k = 1: Any single share can reconstruct the secret (no security)
+     * - k = n: All shares are required (no fault tolerance)
+     * 
+     * @return true if the configuration is trivial, false otherwise
      */
     val isTrivial: Boolean
         get() = threshold == 1 || threshold == totalShares

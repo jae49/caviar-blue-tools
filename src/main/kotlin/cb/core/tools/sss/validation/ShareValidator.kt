@@ -9,6 +9,13 @@ object ShareValidator {
     
     /**
      * Validates a single share for integrity.
+     * 
+     * Performs validation checks:
+     * - Verifies the SHA-256 integrity hash matches the data
+     * - Ensures metadata consistency (size matches actual data)
+     * 
+     * @param share The share to validate
+     * @return Success with the share if valid, Failure with error details otherwise
      */
     fun validateShare(share: SecretShare): SSSResult<SecretShare> {
         // Verify the integrity hash
@@ -26,6 +33,17 @@ object ShareValidator {
     
     /**
      * Validates a collection of shares for reconstruction.
+     * 
+     * Comprehensive validation ensuring:
+     * - All shares pass individual integrity checks
+     * - No duplicate share indices
+     * - All shares from same split operation (matching shareSetId)
+     * - Consistent configuration parameters (threshold, totalShares)
+     * - Matching secret metadata (size, hash)
+     * - Sufficient shares for reconstruction (>= threshold)
+     * 
+     * @param shares List of shares to validate
+     * @return Success with validated shares or Failure with specific error
      */
     fun validateSharesForReconstruction(shares: List<SecretShare>): SSSResult<List<SecretShare>> {
         if (shares.isEmpty()) {
@@ -118,6 +136,13 @@ object ShareValidator {
     
     /**
      * Validates shares against a specific configuration.
+     * 
+     * First performs all reconstruction validation, then ensures
+     * the shares match the expected configuration parameters.
+     * 
+     * @param shares List of shares to validate
+     * @param config Expected configuration to validate against
+     * @return Success if shares match config, Failure with mismatch details
      */
     fun validateSharesForConfig(shares: List<SecretShare>, config: SSSConfig): SSSResult<List<SecretShare>> {
         // First validate shares for reconstruction

@@ -13,7 +13,11 @@ class SecureRandomGenerator {
     
     /**
      * Generates a cryptographically secure random byte.
+     * 
      * The byte value is uniformly distributed in the range [0, 255].
+     * Uses Java's SecureRandom for cryptographic strength.
+     * 
+     * @return Random byte value
      */
     fun nextByte(): Byte {
         return secureRandom.nextInt(256).toByte()
@@ -34,7 +38,11 @@ class SecureRandomGenerator {
     
     /**
      * Generates a cryptographically secure random field element.
+     * 
      * Returns a value in the range [0, 255] suitable for GF(256) operations.
+     * The distribution is uniform across all possible field elements.
+     * 
+     * @return Random field element in [0, 255]
      */
     fun nextFieldElement(): Int {
         return secureRandom.nextInt(256)
@@ -53,7 +61,12 @@ class SecureRandomGenerator {
     
     /**
      * Generates a non-zero cryptographically secure random field element.
+     * 
      * Returns a value in the range [1, 255] suitable for GF(256) operations.
+     * This is useful for generating polynomial coefficients where zero values
+     * would reduce the polynomial degree.
+     * 
+     * @return Random non-zero field element in [1, 255]
      */
     fun nextNonZeroFieldElement(): Int {
         var element: Int

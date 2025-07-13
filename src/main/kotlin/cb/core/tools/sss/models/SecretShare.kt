@@ -38,6 +38,11 @@ data class SecretShare(
 
     /**
      * Verifies the integrity of the share data using the stored hash.
+     * 
+     * Computes the expected hash from the current data and compares it to the stored hash.
+     * This detects any tampering or corruption of the share data.
+     * 
+     * @return true if the integrity check passes, false if data has been modified
      */
     fun verifyIntegrity(): Boolean {
         val expectedHash = computeDataHash(index, data, metadata)
@@ -46,6 +51,15 @@ data class SecretShare(
 
     /**
      * Validates this share against expected configuration.
+     * 
+     * Checks that:
+     * - The share index is within the allowed range for the configuration
+     * - The share metadata matches the configuration parameters
+     * - The secret size is within allowed bounds
+     * - The share data integrity is intact
+     * 
+     * @param config The configuration to validate against
+     * @return true if the share is valid for the given configuration
      */
     fun isValidFor(config: SSSConfig): Boolean {
         return index <= config.totalShares &&
@@ -57,6 +71,13 @@ data class SecretShare(
 
     /**
      * Checks if this share is compatible with another share for reconstruction.
+     * 
+     * Two shares are compatible if:
+     * - They have compatible metadata (same secret, configuration, etc.)
+     * - They have different indices (no duplicate shares)
+     * 
+     * @param other The other share to check compatibility with
+     * @return true if the shares can be used together for reconstruction
      */
     fun isCompatibleWith(other: SecretShare): Boolean {
         return metadata.isCompatibleWith(other.metadata) && index != other.index
@@ -64,6 +85,11 @@ data class SecretShare(
 
     /**
      * Serializes this share to a Base64-encoded string for storage/transmission.
+     * 
+     * The format is: SSS_version_index_metadata_data_hash
+     * All binary data is Base64-encoded for safe text transmission.
+     * 
+     * @return Base64-encoded string representation of this share
      */
     fun toBase64(): String {
         return "${SHARE_HEADER}_${SHARE_VERSION}_${index}_${metadata.toBase64()}_${Base64.getEncoder().encodeToString(data)}_${Base64.getEncoder().encodeToString(dataHash)}"
@@ -101,6 +127,16 @@ data class SecretShare(
 
         /**
          * Computes SHA-256 hash of share data including index and metadata.
+         * 
+         * The hash includes:
+         * - Share index (to detect index tampering)
+         * - Share data (to detect data corruption)
+         * - Share set ID (to detect mixing shares from different operations)
+         * 
+         * @param index The share index
+         * @param data The share data bytes
+         * @param metadata The share metadata containing shareSetId
+         * @return 32-byte SHA-256 hash
          */
         fun computeDataHash(index: Int, data: ByteArray, metadata: ShareMetadata): ByteArray {
             digest.update(index.toString().toByteArray())
@@ -111,6 +147,13 @@ data class SecretShare(
 
         /**
          * Deserializes a share from a Base64-encoded string.
+         * 
+         * Supports both v2.0 format (with integrity hash) and v1.0 legacy format.
+         * For legacy shares, the integrity hash is computed during deserialization.
+         * 
+         * @param encoded Base64-encoded share string
+         * @return Deserialized SecretShare instance
+         * @throws IllegalArgumentException if the format is invalid or unsupported
          */
         fun fromBase64(encoded: String): SecretShare {
             // Try new format first

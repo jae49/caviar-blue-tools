@@ -30,16 +30,24 @@ sealed class SSSResult<out T> {
 
     /**
      * Checks if the result is successful.
+     * 
+     * @return true if this is a Success result, false otherwise
      */
     fun isSuccess(): Boolean = this is Success
 
     /**
      * Checks if the result is a failure.
+     * 
+     * @return true if this is a Failure result, false otherwise
      */
     fun isFailure(): Boolean = this is Failure
 
     /**
      * Gets the success value or null.
+     * 
+     * Safe way to extract the value without throwing exceptions.
+     * 
+     * @return The success value, or null if this is not a Success result
      */
     fun getOrNull(): T? = when (this) {
         is Success -> value
@@ -48,6 +56,9 @@ sealed class SSSResult<out T> {
 
     /**
      * Gets the success value or throws the exception.
+     * 
+     * @return The success value
+     * @throws SSSException if this is not a Success result
      */
     fun getOrThrow(): T = when (this) {
         is Success -> value
@@ -60,6 +71,12 @@ sealed class SSSResult<out T> {
 
     /**
      * Maps the success value to another type.
+     * 
+     * Applies the transformation only if this is a Success result.
+     * Failure and PartialReconstruction results are propagated unchanged.
+     * 
+     * @param transform Function to transform the success value
+     * @return New result with transformed value or original failure
      */
     inline fun <R> map(transform: (T) -> R): SSSResult<R> = when (this) {
         is Success -> Success(transform(value))
@@ -72,6 +89,13 @@ sealed class SSSResult<out T> {
 
     /**
      * Flat maps the success value to another result.
+     * 
+     * Allows chaining operations that return SSSResult.
+     * If this is a Success, applies the transformation.
+     * Otherwise, propagates the failure.
+     * 
+     * @param transform Function that returns a new SSSResult
+     * @return Result of the transformation or original failure
      */
     inline fun <R> flatMap(transform: (T) -> SSSResult<R>): SSSResult<R> = when (this) {
         is Success -> transform(value)
@@ -85,17 +109,33 @@ sealed class SSSResult<out T> {
     companion object {
         /**
          * Creates a success result.
+         * 
+         * @param value The successful value
+         * @return Success result wrapping the value
          */
         fun <T> success(value: T): SSSResult<T> = Success(value)
 
         /**
          * Creates a failure result.
+         * 
+         * @param error The error type
+         * @param message Human-readable error message
+         * @param cause Optional underlying exception
+         * @return Failure result with error details
          */
         fun failure(error: SSSError, message: String, cause: Throwable? = null): SSSResult<Nothing> =
             Failure(error, message, cause)
 
         /**
          * Creates a partial reconstruction result.
+         * 
+         * Used when some shares are invalid but reconstruction might still be possible
+         * if enough valid shares remain.
+         * 
+         * @param validShares List of valid shares
+         * @param invalidShares List of invalid shares with reasons
+         * @param threshold Minimum shares needed for reconstruction
+         * @return PartialReconstruction result with analysis
          */
         fun partialReconstruction(
             validShares: List<SecretShare>,
@@ -109,12 +149,23 @@ sealed class SSSResult<out T> {
 
         /**
          * Converts a nullable value to a result.
+         * 
+         * @param value The nullable value
+         * @param error Error type if value is null
+         * @param message Error message if value is null
+         * @return Success if value is non-null, Failure otherwise
          */
         fun <T> fromNullable(value: T?, error: SSSError, message: String): SSSResult<T> =
             value?.let { Success(it) } ?: Failure(error, message)
 
         /**
          * Wraps a computation that might throw in a result.
+         * 
+         * Catches exceptions and converts them to Failure results.
+         * SSSException preserves the error type, other exceptions become UNKNOWN.
+         * 
+         * @param block The computation to execute
+         * @return Success with result or Failure with exception details
          */
         inline fun <T> catching(block: () -> T): SSSResult<T> = try {
             Success(block())
@@ -128,6 +179,12 @@ sealed class SSSResult<out T> {
 
 /**
  * Represents an invalid share with reason.
+ * 
+ * Used in partial reconstruction results to track which shares
+ * failed validation and why.
+ * 
+ * @property share The invalid share
+ * @property reason Human-readable explanation of why the share is invalid
  */
 data class InvalidShare(
     val share: SecretShare,
@@ -136,6 +193,9 @@ data class InvalidShare(
 
 /**
  * SSS-specific error types.
+ * 
+ * Categorizes different failure modes in SSS operations for
+ * appropriate error handling and user feedback.
  */
 enum class SSSError {
     INVALID_CONFIG,
@@ -152,6 +212,13 @@ enum class SSSError {
 
 /**
  * SSS-specific exception.
+ * 
+ * Custom exception type that includes an SSSError category for
+ * structured error handling.
+ * 
+ * @property message Error description
+ * @property cause Optional underlying exception
+ * @property error The categorized error type
  */
 class SSSException(
     message: String,
