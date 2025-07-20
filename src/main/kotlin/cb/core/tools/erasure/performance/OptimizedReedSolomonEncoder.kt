@@ -17,12 +17,14 @@
 package cb.core.tools.erasure.performance
 
 import cb.core.tools.erasure.math.GaloisField
-import cb.core.tools.erasure.math.PolynomialMath
+import cb.core.tools.erasure.matrix.MatrixUtils
+import cb.core.tools.erasure.matrix.SystematicRSEncoder
 import cb.core.tools.erasure.models.*
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import kotlin.concurrent.thread
+import kotlinx.coroutines.*
 
 class OptimizedReedSolomonEncoder {
     
@@ -30,9 +32,26 @@ class OptimizedReedSolomonEncoder {
         Runtime.getRuntime().availableProcessors()
     )
     
+    // Cache for encoding matrices (systematic algorithm)
+    private val matrixCache = mutableMapOf<Pair<Int, Int>, Array<IntArray>>()
+    
+    // Pre-populate cache with common configurations
+    init {
+        val commonConfigs = listOf(
+            Pair(4, 2), Pair(8, 2), Pair(8, 4), Pair(10, 4),
+            Pair(16, 4), Pair(20, 4), Pair(32, 8)
+        )
+        MatrixUtils.prePopulateCache(commonConfigs.map { Pair(it.first, it.first + it.second) })
+    }
+    
     fun encode(data: ByteArray, config: EncodingConfig): List<Shard> {
         require(data.isNotEmpty()) { "Data cannot be empty" }
         
+        return encodeSystematic(data, config)
+    }
+    
+    
+    private fun encodeSystematic(data: ByteArray, config: EncodingConfig): List<Shard> {
         val checksum = calculateChecksum(data)
         val metadata = ShardMetadata(
             originalSize = data.size.toLong(),
@@ -43,40 +62,20 @@ class OptimizedReedSolomonEncoder {
         val paddedData = padData(data, config)
         val chunks = chunkData(paddedData, config)
         
-        // Pre-compute generator polynomial once
-        val generator = PolynomialMath.generateGenerator(config.parityShards)
+        // Get or generate encoding matrix
+        val encodingMatrix = getOrGenerateEncodingMatrix(config.dataShards, config.parityShards)
         
         // Process chunks in parallel
-        val futures = mutableListOf<Future<List<Shard>>>()
-        
-        for (chunkIndex in chunks.indices) {
-            val chunk = chunks[chunkIndex]
-            val future = threadPool.submit<List<Shard>> {
-                processChunk(chunk, generator, config, metadata, chunkIndex)
+        return runBlocking {
+            val deferreds = chunks.mapIndexed { chunkIndex, chunk ->
+                async(Dispatchers.Default) {
+                    processChunkSystematic(chunk, encodingMatrix, config, metadata, chunkIndex)
+                }
             }
-            futures.add(future)
+            deferreds.flatMap { it.await() }
         }
-        
-        // Collect results
-        val shards = mutableListOf<Shard>()
-        for (future in futures) {
-            shards.addAll(future.get())
-        }
-        
-        return shards
     }
     
-    private fun processChunk(
-        chunk: ByteArray,
-        generator: IntArray,
-        config: EncodingConfig,
-        metadata: ShardMetadata,
-        chunkIndex: Int
-    ): List<Shard> {
-        val dataShards = createDataShards(chunk, config, metadata, chunkIndex)
-        val parityShards = createOptimizedParityShards(chunk, generator, config, metadata, chunkIndex)
-        return dataShards + parityShards
-    }
     
     private fun calculateChecksum(data: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -133,99 +132,130 @@ class OptimizedReedSolomonEncoder {
         return dataShards
     }
     
-    private fun createOptimizedParityShards(
+    
+    
+    private fun getOrGenerateEncodingMatrix(dataShards: Int, parityShards: Int): Array<IntArray> {
+        val key = Pair(dataShards, parityShards)
+        return matrixCache.getOrPut(key) {
+            // Generate only the parity portion of the matrix
+            // (data portion is identity and doesn't need to be stored)
+            Array(parityShards) { i ->
+                IntArray(dataShards) { j ->
+                    GaloisField.power(dataShards + i, j)
+                }
+            }
+        }
+    }
+    
+    private fun processChunkSystematic(
         chunk: ByteArray,
-        generator: IntArray,
+        parityMatrix: Array<IntArray>,
         config: EncodingConfig,
         metadata: ShardMetadata,
         chunkIndex: Int
     ): List<Shard> {
-        // Pre-allocate parity shard arrays
-        val parityData = Array(config.parityShards) { ByteArray(config.shardSize) }
+        val shards = mutableListOf<Shard>()
         
-        // Process in blocks for better cache locality
-        val blockSize = 64 // Process 64 bytes at a time for better cache usage
+        // Create data shards (systematic - contain original data)
+        val dataShardsList = createDataShards(chunk, config, metadata, chunkIndex)
+        shards.addAll(dataShardsList)
         
-        for (blockStart in 0 until config.shardSize step blockSize) {
-            val blockEnd = minOf(blockStart + blockSize, config.shardSize)
+        // Create parity shards using optimized matrix multiplication
+        val parityShards = createSystematicParityShards(
+            dataShardsList, parityMatrix, config, metadata, chunkIndex
+        )
+        shards.addAll(parityShards)
+        
+        return shards
+    }
+    
+    private fun createSystematicParityShards(
+        dataShards: List<Shard>,
+        parityMatrix: Array<IntArray>,
+        config: EncodingConfig,
+        metadata: ShardMetadata,
+        chunkIndex: Int
+    ): List<Shard> {
+        val parityCount = config.parityShards
+        val parityData = Array(parityCount) { ByteArray(config.shardSize) }
+        
+        // Use parallel processing for parity generation
+        runBlocking {
+            val jobs = mutableListOf<Job>()
             
-            for (byteIndex in blockStart until blockEnd) {
-                val dataBytes = IntArray(config.dataShards)
+            // Process in blocks for better cache locality
+            val blockSize = 64
+            for (blockStart in 0 until config.shardSize step blockSize) {
+                val blockEnd = minOf(blockStart + blockSize, config.shardSize)
                 
-                // Gather data bytes from each shard
-                for (shardIndex in 0 until config.dataShards) {
-                    val globalByteIndex = shardIndex * config.shardSize + byteIndex
-                    dataBytes[shardIndex] = if (globalByteIndex < chunk.size) {
-                        chunk[globalByteIndex].toInt() and 0xFF
-                    } else {
-                        0
+                jobs.add(launch(Dispatchers.Default) {
+                    // Process each byte position in the block
+                    for (bytePos in blockStart until blockEnd) {
+                        // Extract data bytes at this position
+                        val dataBytes = IntArray(config.dataShards) { i ->
+                            dataShards[i].data[bytePos].toInt() and 0xFF
+                        }
+                        
+                        // Compute parity bytes using matrix multiplication
+                        // with loop unrolling for common cases
+                        when (parityCount) {
+                            2 -> {
+                                // Optimized for 2 parity shards
+                                for (p in 0 until 2) {
+                                    var sum = 0
+                                    for (d in dataBytes.indices) {
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d], dataBytes[d]))
+                                    }
+                                    parityData[p][bytePos] = sum.toByte()
+                                }
+                            }
+                            4 -> {
+                                // Optimized for 4 parity shards
+                                for (p in 0 until 4) {
+                                    var sum = 0
+                                    var d = 0
+                                    // Unroll by 4
+                                    while (d + 3 < dataBytes.size) {
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d], dataBytes[d]))
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d+1], dataBytes[d+1]))
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d+2], dataBytes[d+2]))
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d+3], dataBytes[d+3]))
+                                        d += 4
+                                    }
+                                    // Handle remainder
+                                    while (d < dataBytes.size) {
+                                        sum = GaloisField.add(sum,
+                                            GaloisField.multiply(parityMatrix[p][d], dataBytes[d]))
+                                        d++
+                                    }
+                                    parityData[p][bytePos] = sum.toByte()
+                                }
+                            }
+                            else -> {
+                                // General case using optimized matrix-vector multiply
+                                val parityBytes = MatrixUtils.multiplyMatrixVector(parityMatrix, dataBytes)
+                                for (p in parityBytes.indices) {
+                                    parityData[p][bytePos] = parityBytes[p].toByte()
+                                }
+                            }
+                        }
                     }
-                }
-                
-                // Compute parity bytes using optimized polynomial encoding
-                val parityBytes = encodeOptimized(dataBytes, generator)
-                
-                // Store parity bytes
-                for (parityIndex in parityBytes.indices) {
-                    parityData[parityIndex][byteIndex] = parityBytes[parityIndex].toByte()
-                }
+                })
             }
+            
+            jobs.joinAll()
         }
         
         // Create shard objects
-        val parityShards = ArrayList<Shard>(config.parityShards)
-        for (parityIndex in 0 until config.parityShards) {
+        return (0 until parityCount).map { parityIndex ->
             val globalShardIndex = chunkIndex * config.totalShards + config.dataShards + parityIndex
-            parityShards.add(Shard(globalShardIndex, parityData[parityIndex], metadata))
+            Shard(globalShardIndex, parityData[parityIndex], metadata)
         }
-        
-        return parityShards
-    }
-    
-    // Optimized encoding with loop unrolling and reduced allocations
-    private fun encodeOptimized(data: IntArray, generator: IntArray): IntArray {
-        val parityCount = generator.size - 1
-        val parity = IntArray(parityCount)
-        
-        // Direct implementation optimized for common cases
-        when (parityCount) {
-            2 -> {
-                // Optimized for 2 parity shards (common case)
-                for (i in data.indices) {
-                    val feedback = data[i] xor parity[0]
-                    if (feedback != 0) {
-                        parity[0] = parity[1] xor GaloisField.multiply(generator[1], feedback)
-                        parity[1] = GaloisField.multiply(generator[0], feedback)
-                    } else {
-                        parity[0] = parity[1]
-                        parity[1] = 0
-                    }
-                }
-            }
-            4 -> {
-                // Optimized for 4 parity shards (common case)
-                for (i in data.indices) {
-                    val feedback = data[i] xor parity[0]
-                    if (feedback != 0) {
-                        parity[0] = parity[1] xor GaloisField.multiply(generator[3], feedback)
-                        parity[1] = parity[2] xor GaloisField.multiply(generator[2], feedback)
-                        parity[2] = parity[3] xor GaloisField.multiply(generator[1], feedback)
-                        parity[3] = GaloisField.multiply(generator[0], feedback)
-                    } else {
-                        parity[0] = parity[1]
-                        parity[1] = parity[2]
-                        parity[2] = parity[3]
-                        parity[3] = 0
-                    }
-                }
-            }
-            else -> {
-                // General case
-                return PolynomialMath.encode(data, generator)
-            }
-        }
-        
-        return parity
     }
     
     fun shutdown() {

@@ -17,7 +17,6 @@
 package cb.core.tools.sss
 
 import cb.core.tools.erasure.math.GaloisField
-import cb.core.tools.erasure.math.PolynomialMath
 import cb.core.tools.sss.models.*
 import cb.core.tools.sss.validation.ShareValidator
 import cb.core.tools.sss.security.SecureErrorHandler

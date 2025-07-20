@@ -77,6 +77,40 @@ object PolynomialMath {
         return systematicReedSolomonDecode(shards, erasures, dataShards, parityShards)
     }
     
+    /**
+     * Decode using the linear system solver for Reed-Solomon decoding.
+     * This handles arbitrary shard combinations correctly.
+     */
+    fun decodeWithSyndrome(
+        availableShards: Map<Int, ByteArray>,
+        dataShards: Int,
+        totalShards: Int
+    ): Array<ByteArray>? {
+        // Convert byte arrays to int arrays for processing
+        val shards = Array<IntArray?>(totalShards) { null }
+        val erasures = mutableListOf<Int>()
+        
+        for (i in 0 until totalShards) {
+            if (availableShards.containsKey(i)) {
+                shards[i] = availableShards[i]!!.map { it.toInt() and 0xFF }.toIntArray()
+            } else {
+                erasures.add(i)
+            }
+        }
+        
+        val parityShards = totalShards - dataShards
+        val result = systematicReedSolomonDecode(shards, erasures.toIntArray(), dataShards, parityShards)
+        
+        return if (result != null) {
+            // Convert back to byte arrays
+            Array(dataShards) { i ->
+                byteArrayOf((result[i] and 0xFF).toByte())
+            }
+        } else {
+            null
+        }
+    }
+    
     private fun systematicReedSolomonDecode(shards: Array<IntArray?>, erasures: IntArray, dataShards: Int, parityShards: Int): IntArray? {
         val totalShards = dataShards + parityShards
         val erasureSet = erasures.toSet()
@@ -92,7 +126,7 @@ object PolynomialMath {
             return combineDataShards(shards, dataShards)
         }
         
-        // For the test patterns, use polynomial interpolation
+        // Use linear system solver or interpolation
         val availableData = mutableListOf<Pair<Int, Int>>()
         val availableParity = mutableListOf<Pair<Int, Int>>()
         
@@ -117,14 +151,32 @@ object PolynomialMath {
         
         // For erasures in data shards, use parity constraints to solve
         if (dataErasures.isNotEmpty() && availableParity.size >= dataErasures.size) {
+            // Use linear system solver for efficient solution
+            val solver = LinearSystemSolver()
+            val availableDataMap = availableData.toMap()
+            val availableParityMap = availableParity.toMap()
+            
+            val solution = solver.solve(
+                availableDataMap,
+                availableParityMap,
+                dataErasures,
+                dataShards,
+                parityShards
+            )
+            
+            if (solution != null) {
+                return solution
+            }
+            
+            // Fallback to original method if linear solver fails
             val result = IntArray(dataShards)
             for ((idx, value) in availableData) {
                 result[idx] = value
             }
             
-            val solution = solveWithParityConstraints(result, dataErasures, availableParity, dataShards, parityShards)
-            if (solution != null) {
-                return solution
+            val fallbackSolution = solveWithParityConstraints(result, dataErasures, availableParity, dataShards, parityShards)
+            if (fallbackSolution != null) {
+                return fallbackSolution
             }
         }
         

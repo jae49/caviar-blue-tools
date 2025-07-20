@@ -11,6 +11,9 @@ The Reed-Solomon Erasure Coding library in `cb.core.tools.erasure` provides reli
 - **Streaming support**: Handle large files with memory-efficient streaming APIs
 - **Kotlin coroutines**: Full async support for non-blocking operations
 - **Robust error handling**: Comprehensive validation and error recovery
+- **Flexible reconstruction**: Decode from any k shards out of n total shards
+- **Non-contiguous shard support**: Handle arbitrary shard combinations and indices
+- **Enhanced diagnostics**: Detailed error reporting and performance metrics
 
 ## Basic Usage
 
@@ -49,6 +52,10 @@ when (val result = decoder.decode(availableShards)) {
         println("Failed: ${result.error}")
     }
 }
+
+// Advanced: Decode from non-contiguous shards
+val nonContiguousShards = listOf(shards[1], shards[2], shards[4], shards[5])
+val result2 = decoder.decode(nonContiguousShards) // Works with any k shards!
 ```
 
 ### Streaming Large Files
@@ -185,8 +192,32 @@ when (result) {
                 println("Shard metadata inconsistent")
             ReconstructionError.MATH_ERROR -> 
                 println("Mathematical computation failed")
+            ReconstructionError.INCOMPATIBLE_SHARDS -> 
+                println("Shards from different encoding operations")
+            ReconstructionError.MATRIX_INVERSION_FAILED -> 
+                println("Unable to solve linear system for reconstruction")
         }
         // Additional error details in result.message
+    }
+}
+```
+
+### Enhanced Diagnostics
+
+The library now provides detailed reconstruction diagnostics:
+
+```kotlin
+when (val result = decoder.decode(availableShards)) {
+    is ReconstructionResult.Success -> {
+        val diagnostics = result.diagnostics
+        println("Strategy used: ${diagnostics?.decodingStrategy}")
+        println("Shards used: ${diagnostics?.shardsUsed}")
+        println("Performance: ${diagnostics?.performance?.totalTimeMs} ms")
+    }
+    is ReconstructionResult.Failure -> {
+        val diagnostics = result.diagnostics
+        println("Failed at stage: ${diagnostics?.failureStage}")
+        println("Shards analyzed: ${diagnostics?.shardsAnalyzed}")
     }
 }
 ```
@@ -211,6 +242,50 @@ Typical performance on modern hardware:
 - Small data (< 1MB): 50-100 MB/s
 - Large data (> 10MB): 100-200 MB/s
 - Streaming: Limited by I/O speed
+- Non-contiguous shards: Similar performance to contiguous shards
+
+### Performance Characteristics by Shard Pattern
+
+| Shard Pattern | Performance Impact | Notes |
+|--------------|-------------------|-------|
+| All data shards | Fastest (fast-path) | Direct copy, no computation |
+| Contiguous k shards | Fast | Optimized matrix operations |
+| Non-contiguous shards | Fast | Full RS decoding, well-optimized |
+| Maximum erasures | Slower | More computation required |
+
+## Shard Combination Patterns
+
+The enhanced decoder supports reconstruction from any valid combination of k shards:
+
+### Supported Patterns
+
+```kotlin
+// Example: 8 data shards + 4 parity shards (total 12), need any 8 to reconstruct
+
+// Pattern 1: Missing some data shards
+val pattern1 = listOf(0, 1, 2, 3, 8, 9, 10, 11) // Missing shards 4-7
+
+// Pattern 2: Missing all data shards (using only parity)
+val pattern2 = listOf(8, 9, 10, 11) + listOf(0, 1, 2, 3) // Parity + some data
+
+// Pattern 3: Non-contiguous selection
+val pattern3 = listOf(1, 2, 4, 5, 7, 8, 10, 11) // Missing 0, 3, 6, 9
+
+// Pattern 4: Every other shard
+val pattern4 = (0..11).filter { it % 2 == 0 } + listOf(1, 3) // Even shards + 2 odd
+
+// All patterns work equally well!
+val result = decoder.decode(shardsMatchingPattern)
+```
+
+### Optimal Shard Selection Strategy
+
+When you have more than k shards available, consider these strategies:
+
+1. **Prefer data shards**: If all data shards are available, use them for fastest decoding
+2. **Minimize gaps**: Contiguous shards may have slightly better cache performance
+3. **Load balance**: Distribute reads across storage locations
+4. **Prioritize reliability**: Keep extra shards as backup during reconstruction
 
 ## Best Practices
 
@@ -219,6 +294,8 @@ Typical performance on modern hardware:
 3. **Verify checksums**: Always check reconstruction success
 4. **Store metadata separately**: Keep shard configuration for recovery
 5. **Test recovery scenarios**: Ensure your configuration meets reliability needs
+6. **Handle any shard combination**: The decoder now supports all valid k-of-n combinations
+7. **Monitor performance**: Use diagnostics to track reconstruction efficiency
 
 ## Example: Complete File Protection System
 
@@ -288,6 +365,50 @@ class FileProtectionSystem(
 }
 ```
 
+## Troubleshooting Guide
+
+### Common Issues and Solutions
+
+1. **"CORRUPTED_SHARDS" error with valid shards**
+   - **Previous behavior**: Decoder failed with certain non-contiguous shard combinations
+   - **Fixed**: The enhanced decoder now handles all valid k-of-n combinations
+   - **Action**: Update to the latest version
+
+2. **"MATRIX_INVERSION_FAILED" error**
+   - **Cause**: Linear system cannot be solved (extremely rare)
+   - **Solution**: Try different shard combinations if available
+   - **Prevention**: Ensure shards are from the same encoding operation
+
+3. **Performance degradation with specific patterns**
+   - **Cause**: Some shard patterns require more computation
+   - **Solution**: Use performance diagnostics to identify bottlenecks
+   - **Optimization**: Prefer contiguous shards when possible
+
+### Migration Guide
+
+If you're upgrading from a previous version:
+
+1. **API Compatibility**: All existing APIs remain unchanged
+2. **Behavior Changes**: 
+   - Shard combinations that previously failed now work
+   - Error messages are more detailed
+   - Performance metrics are available in results
+3. **No Code Changes Required**: Existing code will work without modification
+4. **New Features Available**: 
+   - Access diagnostics through `result.diagnostics`
+   - Use advanced decoding options in `EncodingConfig`
+
+## Mathematical Background
+
+The enhanced decoder implements proper Reed-Solomon decoding using:
+
+- **Vandermonde matrices** for solving linear systems in GF(256)
+- **Syndrome-based decoding** for error detection and correction
+- **Matrix inversion** in finite fields for arbitrary shard combinations
+- **Optimized Galois Field arithmetic** for performance
+
+This ensures mathematically correct reconstruction from any valid k-of-n shard combination.
+
 ## Conclusion
 
-The Reed-Solomon Erasure Coding library provides a robust solution for data protection through redundancy. Whether you're building a distributed storage system, protecting important files, or implementing fault-tolerant data transmission, this library offers the tools you need with excellent performance and reliability.
+The Reed-Solomon Erasure Coding library provides a robust solution for data protection through redundancy. With the enhanced decoder supporting all valid shard combinations, you can confidently build distributed storage systems, protect important files, or implement fault-tolerant data transmission with excellent performance and reliability.

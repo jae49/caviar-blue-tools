@@ -41,23 +41,23 @@ The project includes a comprehensive and **fully functional** Reed-Solomon erasu
 - **Key Features**:
   - Pre-computed exponential and logarithmic lookup tables for GF(256)
   - All basic field operations: add, subtract, multiply, divide, power, inverse
-  - Polynomial operations: multiplication, evaluation, division
+  - Basic field operations: multiplication, evaluation
   - **Performance**: >200M additions/sec, >71M multiplications/sec
   - Mathematical correctness verified (field properties, edge cases)
 
-#### Polynomial Mathematics
-- **Location**: `cb.core.tools.erasure.math.PolynomialMath`
-- **Status**: ✅ **FUNCTIONAL** - Core operations working, 11/13 tests passing
-- **Purpose**: High-level polynomial operations for Reed-Solomon encoding/decoding
+#### Matrix Operations
+- **Location**: `cb.core.tools.erasure.matrix.MatrixUtils`
+- **Status**: ✅ **FUNCTIONAL** - Core operations working
+- **Purpose**: Matrix operations for systematic Reed-Solomon encoding/decoding
 - **Key Features**:
-  - Generator polynomial creation for configurable redundancy
-  - **Working Reed-Solomon encode/decode** for basic erasure patterns
-  - Lagrange polynomial interpolation for data reconstruction
-  - Matrix operations with Gaussian elimination for error correction
+  - Matrix inversion for decoding operations
+  - **Working Reed-Solomon encode/decode** using systematic approach
+  - Support for any k-out-of-n reconstruction
+  - Optimized matrix multiplication
   - Support for up to 255 total shards (GF(256) limitation)
 
 ### Testing Infrastructure
-- **Unit Tests**: **27 out of 29 tests passing** (93% pass rate)
+- **Unit Tests**: All tests passing
 - **Performance Benchmarks**: All benchmark tests passing with measured throughput
 - **Test Framework**: JUnit 5 with comprehensive assertions
 - **Coverage**: All mathematical operations, field properties, round-trip encode/decode
@@ -69,7 +69,7 @@ gradle test
 
 # Run specific test suite
 gradle test --tests "*GaloisFieldTest*"
-gradle test --tests "*PolynomialMathTest*"
+gradle test --tests "*MatrixUtilsTest*"
 
 # Run performance benchmarks
 gradle test --tests "*MathBenchmark*"
@@ -78,7 +78,7 @@ gradle test --tests "*MathBenchmark*"
 ### Implementation Status
 - ✅ **Phase 1**: Mathematical foundation (**COMPLETE**)
   - All GaloisField operations working correctly
-  - Basic Reed-Solomon encode/decode functional
+  - Systematic Reed-Solomon encode/decode fully functional
   - Performance benchmarks: >200M field ops/sec
   - Ready for production use of mathematical components
 - ✅ **Phase 2**: Core encoding/decoding classes (**COMPLETE**)
@@ -107,7 +107,7 @@ gradle test --tests "*MathBenchmark*"
   - ✅ Integration test for 16K data with 8+6 configuration implemented
   - ⚡ Slow tests (benchmarks, large data) available via `gradle slowTests`
 - **Core Features**: 
-  - ✅ Reed-Solomon encoding/decoding fully functional
+  - ✅ Systematic Reed-Solomon encoding/decoding fully functional
   - ✅ Erasure recovery up to parity shard count
   - ✅ Streaming support with Kotlin coroutines
   - ✅ Memory-efficient processing
@@ -140,7 +140,7 @@ src/
 │   ├── ReedSolomonDecoder.kt          # Main decoding class
 │   ├── math/
 │   │   ├── GaloisField.kt             # GF(256) arithmetic operations
-│   │   └── PolynomialMath.kt          # Reed-Solomon polynomial operations
+│   │   └── MatrixUtils.kt             # Reed-Solomon matrix operations
 │   ├── models/
 │   │   ├── EncodingConfig.kt          # Configuration data class
 │   │   ├── Shard.kt                   # Shard data model
@@ -151,7 +151,7 @@ src/
 │   └── performance/
 │       ├── OptimizedReedSolomonEncoder.kt      # Parallel encoding
 │       ├── RobustReedSolomonDecoder.kt         # Enhanced error handling
-│       ├── OptimizedPolynomialMath.kt          # Cached matrix operations
+│       ├── OptimizedMatrixOperations.kt        # Cached matrix operations
 │       └── TwentyShardOptimizedEncoder.kt      # Specialized 20-shard encoder
 └── test/kotlin/cb/core/tools/erasure/
     ├── FastIntegrationTest.kt         # Quick integration tests
@@ -162,7 +162,7 @@ src/
     ├── ReedSolomonDecoderTest.kt      # Decoder unit tests
     ├── math/
     │   ├── GaloisFieldTest.kt         # Field operation tests
-    │   ├── PolynomialMathTest.kt      # Polynomial tests
+    │   ├── MatrixUtilsTest.kt          # Matrix operation tests
     │   └── MathBenchmark.kt           # Performance tests (@Tag("slow"))
     ├── models/
     │   └── EncodingConfigTest.kt      # Model validation tests

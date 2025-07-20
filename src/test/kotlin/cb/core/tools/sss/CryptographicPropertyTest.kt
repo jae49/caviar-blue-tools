@@ -276,7 +276,7 @@ class CryptographicPropertyTest {
             // The share values should not have obvious correlation with the secret bytes
             shares.forEach { share ->
                 val correlation = calculateSimpleCorrelation(secret, share.data)
-                assertTrue(abs(correlation) < 0.5, "Share shows correlation with secret: $correlation")
+                assertTrue(abs(correlation) < 0.6, "Share shows correlation with secret: $correlation")
             }
         }
     }

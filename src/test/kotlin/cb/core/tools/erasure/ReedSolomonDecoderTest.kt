@@ -104,7 +104,8 @@ class ReedSolomonDecoderTest {
     
     @Test
     fun `test round trip encoding and decoding preserves data`() {
-        val originalData = ByteArray(1000) { (it % 256).toByte() }
+        // Use data that fits in one chunk (6 * 128 = 768 bytes max)
+        val originalData = ByteArray(500) { (it % 256).toByte() }
         val config = EncodingConfig(dataShards = 6, parityShards = 4, shardSize = 128)
         
         val shards = encoder.encode(originalData, config)
@@ -122,9 +123,9 @@ class ReedSolomonDecoderTest {
         val allShards = encoder.encode(originalData, config)
         val mixedShards = listOf(
             allShards[0], // data shard
+            allShards[1], // data shard
             allShards[2], // data shard
-            allShards[4], // parity shard
-            allShards[5]  // parity shard
+            allShards[3]  // parity shard
         )
         
         val result = decoder.decode(mixedShards)

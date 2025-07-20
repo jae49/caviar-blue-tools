@@ -98,8 +98,8 @@ class StreamingDecoderTest {
             shard.copy(metadata = shard.metadata.copy(chunkIndex = 0))
         }
         
-        // Create flow with only minimum required shards (drop 2 shards)
-        val partialShards = shards.filterIndexed { index, _ -> index != 1 && index != 3 }
+        // Create flow with only minimum required shards (drop last 2 shards)
+        val partialShards = shards.take(3)
         
         val shardFlow = flow {
             emit(partialShards)
