@@ -6,12 +6,13 @@ The Reed-Solomon Erasure Coding library in `cb.core.tools.erasure` provides reli
 
 ## Key Features
 
+- **Guaranteed reconstruction**: Recovers data from ANY k shards out of n total
+- **Matrix-based implementation**: Uses systematic Reed-Solomon with Vandermonde/Cauchy matrices
 - **Configurable redundancy**: Choose how many data and parity shards to create
 - **Efficient implementation**: Uses GF(256) arithmetic for fast encoding/decoding
 - **Streaming support**: Handle large files with memory-efficient streaming APIs
 - **Kotlin coroutines**: Full async support for non-blocking operations
 - **Robust error handling**: Comprehensive validation and error recovery
-- **Flexible reconstruction**: Decode from any k shards out of n total shards
 - **Non-contiguous shard support**: Handle arbitrary shard combinations and indices
 - **Enhanced diagnostics**: Detailed error reporting and performance metrics
 
@@ -55,7 +56,7 @@ when (val result = decoder.decode(availableShards)) {
 
 // Advanced: Decode from non-contiguous shards
 val nonContiguousShards = listOf(shards[1], shards[2], shards[4], shards[5])
-val result2 = decoder.decode(nonContiguousShards) // Works with any k shards!
+val result2 = decoder.decode(nonContiguousShards) // Works with ANY k shards!
 ```
 
 ### Streaming Large Files
@@ -131,6 +132,7 @@ data class EncodingConfig(
 ```kotlin
 import cb.core.tools.erasure.performance.OptimizedReedSolomonEncoder
 
+// Use optimized encoder for better performance
 val encoder = OptimizedReedSolomonEncoder()
 try {
     val shards = encoder.encode(data, config)
@@ -255,24 +257,25 @@ Typical performance on modern hardware:
 
 ## Shard Combination Patterns
 
-The enhanced decoder supports reconstruction from any valid combination of k shards:
-
-### Supported Patterns
+The Reed-Solomon implementation guarantees reconstruction from ANY valid combination of k shards:
 
 ```kotlin
 // Example: 8 data shards + 4 parity shards (total 12), need any 8 to reconstruct
+val config = EncodingConfig(8, 4)
+
+// ALL these patterns work:
 
 // Pattern 1: Missing some data shards
-val pattern1 = listOf(0, 1, 2, 3, 8, 9, 10, 11) // Missing shards 4-7
+val pattern1 = listOf(0, 1, 2, 3, 8, 9, 10, 11) // Missing shards 4-7 ✓
 
 // Pattern 2: Missing all data shards (using only parity)
-val pattern2 = listOf(8, 9, 10, 11) + listOf(0, 1, 2, 3) // Parity + some data
+val pattern2 = listOf(8, 9, 10, 11) + listOf(0, 1, 2, 3) // Parity + some data ✓
 
 // Pattern 3: Non-contiguous selection
-val pattern3 = listOf(1, 2, 4, 5, 7, 8, 10, 11) // Missing 0, 3, 6, 9
+val pattern3 = listOf(1, 2, 4, 5, 7, 8, 10, 11) // Missing 0, 3, 6, 9 ✓
 
 // Pattern 4: Every other shard
-val pattern4 = (0..11).filter { it % 2 == 0 } + listOf(1, 3) // Even shards + 2 odd
+val pattern4 = (0..11).filter { it % 2 == 0 } + listOf(1, 3) // Even shards + 2 odd ✓
 
 // All patterns work equally well!
 val result = decoder.decode(shardsMatchingPattern)
@@ -301,7 +304,10 @@ When you have more than k shards available, consider these strategies:
 
 ```kotlin
 class FileProtectionSystem(
-    private val config: EncodingConfig = EncodingConfig(8, 4)
+    private val config: EncodingConfig = EncodingConfig(
+        dataShards = 8,
+        parityShards = 4
+    )
 ) {
     private val encoder = ReedSolomonEncoder()
     private val decoder = ReedSolomonDecoder()
@@ -370,19 +376,24 @@ class FileProtectionSystem(
 ### Common Issues and Solutions
 
 1. **"CORRUPTED_SHARDS" error with valid shards**
-   - **Previous behavior**: Decoder failed with certain non-contiguous shard combinations
-   - **Fixed**: The enhanced decoder now handles all valid k-of-n combinations
-   - **Action**: Update to the latest version
+   - **Cause**: Checksum verification failed
+   - **Solution**: Ensure shards haven't been modified during storage/transmission
+   - **Prevention**: Use secure storage and verify checksums regularly
 
-2. **"MATRIX_INVERSION_FAILED" error**
+2. **"INSUFFICIENT_SHARDS" error**
+   - **Cause**: Not enough shards available for reconstruction (need at least k)
+   - **Solution**: Gather more shards from backup locations
+   - **Prevention**: Store shards redundantly across multiple locations
+
+3. **"MATRIX_INVERSION_FAILED" error**
    - **Cause**: Linear system cannot be solved (extremely rare)
-   - **Solution**: Try different shard combinations if available
-   - **Prevention**: Ensure shards are from the same encoding operation
+   - **Solution**: Verify shards are from the same encoding operation
+   - **Prevention**: Don't mix shards from different encoding operations
 
-3. **Performance degradation with specific patterns**
-   - **Cause**: Some shard patterns require more computation
-   - **Solution**: Use performance diagnostics to identify bottlenecks
-   - **Optimization**: Prefer contiguous shards when possible
+4. **Performance considerations**
+   - **Standard encoding**: 25-50 MB/s typical
+   - **Optimized encoding**: 25-175 MB/s with parallelization
+   - **Tip**: Use `OptimizedReedSolomonEncoder` for large data sets
 
 ### Migration Guide
 
@@ -400,15 +411,15 @@ If you're upgrading from a previous version:
 
 ## Mathematical Background
 
-The enhanced decoder implements proper Reed-Solomon decoding using:
+The Reed-Solomon implementation uses systematic encoding based on:
 
-- **Vandermonde matrices** for solving linear systems in GF(256)
-- **Syndrome-based decoding** for error detection and correction
-- **Matrix inversion** in finite fields for arbitrary shard combinations
-- **Optimized Galois Field arithmetic** for performance
+- **Vandermonde or Cauchy matrices** for encoding
+- **Matrix inversion** in GF(256) for solving linear systems
+- **Gaussian elimination** for arbitrary shard combinations
+- **Galois Field arithmetic** for all mathematical operations
 
-This ensures mathematically correct reconstruction from any valid k-of-n shard combination.
+This approach guarantees reconstruction from ANY k valid shards out of n total, providing true Reed-Solomon erasure coding properties.
 
 ## Conclusion
 
-The Reed-Solomon Erasure Coding library provides a robust solution for data protection through redundancy. With the enhanced decoder supporting all valid shard combinations, you can confidently build distributed storage systems, protect important files, or implement fault-tolerant data transmission with excellent performance and reliability.
+The Reed-Solomon Erasure Coding library provides a robust solution for data protection through redundancy. Using systematic matrix-based encoding, it guarantees reconstruction from ANY k valid shards out of n total, ensuring you can confidently build distributed storage systems, protect important files, or implement fault-tolerant data transmission with excellent performance and mathematical reliability.

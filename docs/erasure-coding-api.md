@@ -20,6 +20,10 @@ class ReedSolomonEncoder {
 
 **Returns:** List of encoded shards (data + parity)
 
+**Implementation:**
+- Uses systematic matrix-based Reed-Solomon encoding
+- Guarantees reconstruction from ANY k valid shards
+
 **Throws:**
 - `IllegalArgumentException` if data is empty
 
@@ -40,6 +44,10 @@ class ReedSolomonDecoder {
 
 **Returns:** `ReconstructionResult` indicating success or failure
 
+**Implementation:**
+- Uses systematic matrix-based decoding
+- Can reconstruct from ANY k valid shards out of n total
+
 ---
 
 ### Models Package: `cb.core.tools.erasure.models`
@@ -57,6 +65,11 @@ data class EncodingConfig(
     val totalShards: Int = dataShards + parityShards
 }
 ```
+
+**Parameters:**
+- `dataShards`: Number of data shards (k in k-of-n)
+- `parityShards`: Number of parity/redundancy shards
+- `shardSize`: Size of each shard in bytes
 
 **Constraints:**
 - `dataShards > 0`
@@ -193,6 +206,8 @@ class OptimizedReedSolomonEncoder {
 - Parallel chunk processing
 - Optimized for common configurations
 - Thread pool management
+- Matrix caching for performance
+- SIMD-style optimizations where applicable
 
 ---
 
@@ -214,6 +229,9 @@ class RobustReedSolomonDecoder {
 - Pre-validation of shard consistency
 - Detailed error reporting
 - Fallback recovery strategies
+- Multiple matrix inversion strategies
+- Alternative shard combination attempts on failure
+- Enhanced diagnostics for troubleshooting
 
 ---
 
@@ -238,22 +256,27 @@ object GaloisField {
 
 ---
 
-#### PolynomialMath
+### Matrix Package: `cb.core.tools.erasure.matrix`
 
-Reed-Solomon polynomial operations.
+#### MatrixUtils
+
+Matrix operations for systematic Reed-Solomon encoding/decoding.
 
 ```kotlin
-object PolynomialMath {
-    fun generateGenerator(parityShards: Int): IntArray
-    fun encode(data: IntArray, generator: IntArray): IntArray
-    fun decode(
-        shards: Array<IntArray?>,
-        erasures: IntArray,
-        dataShards: Int,
-        parityShards: Int
-    ): IntArray?
+object MatrixUtils {
+    fun generateVandermondeMatrix(k: Int, n: Int): Array<IntArray>
+    fun generateCauchyMatrix(k: Int, n: Int): Array<IntArray>
+    fun invertMatrix(matrix: Array<IntArray>): Array<IntArray>?
+    fun multiplyMatrixVector(matrix: Array<IntArray>, vector: IntArray): IntArray
+    fun extractSubmatrix(matrix: Array<IntArray>, rowIndices: List<Int>): Array<IntArray>
 }
 ```
+
+**Features:**
+- Vandermonde and Cauchy matrix generation
+- Matrix inversion using Gaussian elimination in GF(256)
+- Optimized matrix-vector multiplication
+- Matrix caching for common configurations
 
 ---
 
@@ -270,7 +293,7 @@ val decoder = ReedSolomonDecoder()
 // Encode
 val shards = encoder.encode(data, config)
 
-// Decode
+// Decode - works with ANY 4 shards out of 6 total
 when (val result = decoder.decode(availableShards)) {
     is ReconstructionResult.Success -> handleData(result.data)
     is ReconstructionResult.Failure -> handleError(result.error)
@@ -328,11 +351,13 @@ Decoding operations return `ReconstructionResult.Failure` with:
 
 | Operation | Complexity | Typical Throughput |
 |-----------|------------|-------------------|
-| Encoding | O(n × p) | 50-200 MB/s |
+| Encoding | O(n × p) | 25-175 MB/s |
 | Decoding (no erasures) | O(n) | 100-400 MB/s |
-| Decoding (with erasures) | O(n × e) | 50-150 MB/s |
+| Decoding (with erasures) | O(n × k²) | 50-150 MB/s |
 
 Where:
 - n = data size
 - p = parity shard count
-- e = erasure count
+- k = data shard count
+
+**Note:** The systematic algorithm provides excellent parallelization opportunities and guarantees reconstruction from ANY k valid shards.

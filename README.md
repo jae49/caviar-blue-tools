@@ -5,12 +5,14 @@ A comprehensive Kotlin library providing enterprise-grade cryptographic and data
 ## Features
 
 ### Reed-Solomon Erasure Coding (RSEC)
-High-performance erasure coding library for data redundancy and recovery:
+High-performance erasure coding library with systematic matrix-based implementation:
+- **Guaranteed reconstruction**: Recovers data from ANY k valid shards out of n total
+- **Matrix-based algorithm**: Uses Vandermonde/Cauchy matrices in GF(256)
 - **Configurable redundancy**: Support for up to 255 total shards (data + parity)
 - **High throughput**: 25-175 MB/s encoding performance
 - **Streaming support**: Memory-efficient processing of large files with Kotlin coroutines
 - **Optimized implementations**: Parallel processing and specialized encoders
-- **Complete recovery**: Reconstruct original data from any k-of-n shards
+- **Complete reliability**: No shard combination limitations
 
 ### Shamir Secret Sharing (SSS)
 Cryptographically secure secret splitting and reconstruction:
@@ -39,20 +41,31 @@ import cb.core.tools.erasure.*
 import cb.core.tools.erasure.models.EncodingConfig
 
 // Configure encoding (8 data shards + 6 parity shards)
-val config = EncodingConfig(dataShards = 8, parityShards = 6)
+val config = EncodingConfig(
+    dataShards = 8, 
+    parityShards = 6
+)
 val encoder = ReedSolomonEncoder()
 val decoder = ReedSolomonDecoder()
 
 // Encode data
 val data = "Your important data".toByteArray()
-val shards = encoder.encode(data, config).getOrThrow()
+val shards = encoder.encode(data, config)
 
 // Lose some shards (up to 6 can be lost)
-val availableShards = shards.filterIndexed { i, _ -> i != 3 && i != 7 }
+// Any combination of 8 shards will work - guaranteed!
+val availableShards = shards.filterIndexed { i, _ -> i != 0 && i != 3 && i != 6 }
 
-// Reconstruct original data
-val result = decoder.decode(availableShards).getOrThrow()
-val reconstructedData = result.data
+// Reconstruct original data from ANY 8 shards
+when (val result = decoder.decode(availableShards)) {
+    is ReconstructionResult.Success -> {
+        val reconstructedData = result.data
+        println("Successfully reconstructed!")
+    }
+    is ReconstructionResult.Failure -> {
+        println("Failed: ${result.error}")
+    }
+}
 ```
 
 ### Shamir Secret Sharing
@@ -83,8 +96,13 @@ val reconstructed = sss.reconstructString(collectedShares).getOrThrow()
 
 ```kotlin
 // Use optimized encoder for better performance
+val config = EncodingConfig(
+    dataShards = 10,
+    parityShards = 6
+)
+
 val optimizedEncoder = OptimizedReedSolomonEncoder()
-val shards = optimizedEncoder.encode(largeData, config).getOrThrow()
+val shards = optimizedEncoder.encode(largeData, config)
 
 // Stream large files
 val streamEncoder = StreamingEncoder()
@@ -116,6 +134,7 @@ shares.forEach { share ->
 - **Optimized encoding**: 45-175 MB/s
 - **20-shard specialized**: 170+ MB/s
 - **Decoding**: 50-150 MB/s
+- **Reliability**: 100% reconstruction guarantee from ANY k shards
 
 ### Shamir Secret Sharing
 - **Splitting**: ~1ms for 1KB secret with 10 shares
