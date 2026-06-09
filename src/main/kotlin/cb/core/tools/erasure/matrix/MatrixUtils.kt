@@ -2,7 +2,6 @@ package cb.core.tools.erasure.matrix
 
 import cb.core.tools.erasure.math.GaloisField
 import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.*
 import kotlin.math.min
 
 /**
@@ -25,10 +24,7 @@ object MatrixUtils {
     
     // Block size for cache-efficient operations
     private const val BLOCK_SIZE = 64
-    
-    // Threshold for using parallel processing
-    private const val PARALLEL_THRESHOLD = 16
-    
+
     private data class MatrixCacheKey(
         val k: Int,
         val n: Int,
@@ -65,31 +61,13 @@ object MatrixUtils {
         val cacheKey = MatrixCacheKey(k, n, MatrixType.VANDERMONDE)
         matrixCache[cacheKey]?.let { return deepCopy(it) }
         
-        val matrix = Array(n) { IntArray(k) }
-        
-        // Use parallel processing for large matrices
-        if (n >= PARALLEL_THRESHOLD) {
-            runBlocking {
-                val jobs = mutableListOf<Job>()
-                for (i in 0 until n) {
-                    jobs.add(launch(Dispatchers.Default) {
-                        for (j in 0 until k) {
-                            val alpha = i + 1
-                            matrix[i][j] = GaloisField.power(alpha, j)
-                        }
-                    })
-                }
-                jobs.joinAll()
-            }
-        } else {
-            for (i in 0 until n) {
-                for (j in 0 until k) {
-                    val alpha = i + 1
-                    matrix[i][j] = GaloisField.power(alpha, j)
-                }
-            }
+        // Building the matrix is a handful of cheap field ops per row; a plain
+        // sequential loop is far faster than dispatching a coroutine per row.
+        val matrix = Array(n) { i ->
+            val alpha = i + 1
+            IntArray(k) { j -> GaloisField.power(alpha, j) }
         }
-        
+
         // Cache the result if cache size permits
         if (matrixCache.size < MAX_CACHE_SIZE) {
             matrixCache[cacheKey] = deepCopy(matrix)
@@ -228,27 +206,15 @@ object MatrixUtils {
         }
         
         val m = matrix.size
-        val n = vector.size
         val result = IntArray(m)
-        
-        // Use parallel processing for large matrices
-        if (m >= PARALLEL_THRESHOLD) {
-            runBlocking {
-                val jobs = mutableListOf<Job>()
-                for (i in 0 until m) {
-                    jobs.add(launch(Dispatchers.Default) {
-                        result[i] = multiplyRowVector(matrix[i], vector)
-                    })
-                }
-                jobs.joinAll()
-            }
-        } else {
-            // Optimized sequential version with loop unrolling
-            for (i in 0 until m) {
-                result[i] = multiplyRowVector(matrix[i], vector)
-            }
+
+        // A matrix-vector product over a handful of GF(256) bytes is far cheaper
+        // than coroutine dispatch; keep it a tight sequential loop. Callers that
+        // operate on whole shards should use GaloisField.multiplyRegionInto.
+        for (i in 0 until m) {
+            result[i] = multiplyRowVector(matrix[i], vector)
         }
-        
+
         return result
     }
     

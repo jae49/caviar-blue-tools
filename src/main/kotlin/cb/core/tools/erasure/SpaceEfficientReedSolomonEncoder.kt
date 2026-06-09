@@ -17,6 +17,7 @@
 package cb.core.tools.erasure
 
 import cb.core.tools.erasure.math.GaloisField
+import cb.core.tools.erasure.matrix.RSMatrix
 import cb.core.tools.erasure.models.*
 import java.security.MessageDigest
 
@@ -82,37 +83,16 @@ class SpaceEfficientReedSolomonEncoder {
             shards.add(shard)
         }
         
-        // Generate parity matrix
-        val parityMatrix = Array(parityShards) { i ->
-            IntArray(dataShards) { j ->
-                val evalPoint = GaloisField.exp(dataShards + i)
-                GaloisField.power(evalPoint, j)
-            }
-        }
-        
-        // Generate parity shards
+        // Cauchy parity matrix (MDS); region multiply-add a whole shard at a time.
+        val parityMatrix = RSMatrix.parityMatrix(dataShards, parityShards)
         for (i in 0 until parityShards) {
             val parityShard = ByteArray(actualShardSize)
-            
-            for (bytePos in 0 until actualShardSize) {
-                val dataBytes = IntArray(dataShards) { j ->
-                    shards[j][bytePos].toInt() and 0xFF
-                }
-                
-                var parityByte = 0
-                for (j in 0 until dataShards) {
-                    parityByte = GaloisField.add(
-                        parityByte,
-                        GaloisField.multiply(parityMatrix[i][j], dataBytes[j])
-                    )
-                }
-                
-                parityShard[bytePos] = parityByte.toByte()
+            for (j in 0 until dataShards) {
+                GaloisField.multiplyRegionInto(parityMatrix[i][j], shards[j], parityShard)
             }
-            
             shards.add(parityShard)
         }
-        
+
         return shards
     }
     
@@ -164,36 +144,16 @@ class SpaceEfficientReedSolomonEncoder {
             shards.add(Shard(i, shardData, metadata))
         }
         
-        // Generate parity shards
-        val parityMatrix = Array(config.parityShards) { i ->
-            IntArray(config.dataShards) { j ->
-                val evalPoint = GaloisField.exp(config.dataShards + i)
-                GaloisField.power(evalPoint, j)
-            }
-        }
-        
+        // Cauchy parity matrix (MDS); region multiply-add a whole shard at a time.
+        val parityMatrix = RSMatrix.parityMatrix(config.dataShards, config.parityShards)
         for (i in 0 until config.parityShards) {
             val parityShard = ByteArray(actualShardSize)
-            
-            for (bytePos in 0 until actualShardSize) {
-                val dataBytes = IntArray(config.dataShards) { j ->
-                    shards[j].data[bytePos].toInt() and 0xFF
-                }
-                
-                var parityByte = 0
-                for (j in 0 until config.dataShards) {
-                    parityByte = GaloisField.add(
-                        parityByte,
-                        GaloisField.multiply(parityMatrix[i][j], dataBytes[j])
-                    )
-                }
-                
-                parityShard[bytePos] = parityByte.toByte()
+            for (j in 0 until config.dataShards) {
+                GaloisField.multiplyRegionInto(parityMatrix[i][j], shards[j].data, parityShard)
             }
-            
             shards.add(Shard(config.dataShards + i, parityShard, metadata))
         }
-        
+
         return shards
     }
     

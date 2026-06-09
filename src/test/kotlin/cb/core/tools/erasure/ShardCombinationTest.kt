@@ -387,9 +387,11 @@ class ShardCombinationTest {
             dataShards = 10,
             parityShards = 5
         )
-        val dataSize = 100 * 1024 // 100KB
+        // Keep the data within a single chunk (shardSize * dataShards = 81920 bytes)
+        // so the global shard indices selected by each pattern address one shard set.
+        val dataSize = 64 * 1024 // 64KB
         val data = Random.nextBytes(dataSize)
-        
+
         data class Pattern(
             val name: String, 
             val indices: List<Int>,

@@ -91,10 +91,13 @@ class PerformanceBenchmark {
             repeat(3) { // Run 3 iterations for averaging
                 val data = ByteArray(dataSize) { Random.nextBytes(1)[0] }
                 val shards = encoder.encode(data, config)
-                
-                // Simulate erasures by removing random shards
-                val availableShards = shards.shuffled(Random).drop(erasureCount)
-                
+
+                // Erase `erasureCount` shards by local index in every chunk (1 MB
+                // spans multiple 8192-byte-shard chunks, so a random global drop
+                // could leave one chunk below k).
+                val erased = (0 until config.totalShards).shuffled(Random).take(erasureCount).toSet()
+                val availableShards = shards.filter { (it.index % config.totalShards) !in erased }
+
                 val decodingTime = measureNanoTime {
                     val result = decoder.decode(availableShards)
                     assertTrue(result is ReconstructionResult.Success)

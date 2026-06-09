@@ -196,9 +196,12 @@ class CryptographicPropertyTest {
     fun `shares should maintain information theoretic security`() {
         val config = SSSConfig(5, 10)
         
-        // Create two secrets with known relationship
-        val secret1 = ByteArray(32) { 0x00 }
-        val secret2 = ByteArray(32) { 0xFF.toByte() }
+        // Create two secrets with known relationship. Use larger secrets so the
+        // difference histogram below is drawn from enough samples (4 shares x 256
+        // bytes = 1024); a 32-byte secret yields only 128 values, where the
+        // ">100 unique" check flakes purely from birthday-style collisions.
+        val secret1 = ByteArray(256) { 0x00 }
+        val secret2 = ByteArray(256) { 0xFF.toByte() }
         
         val splitResult1 = sss.split(secret1, config)
         val splitResult2 = sss.split(secret2, config)

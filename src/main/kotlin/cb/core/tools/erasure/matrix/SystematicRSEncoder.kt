@@ -15,10 +15,7 @@ import java.security.MessageDigest
  * reconstruction requires no computation.
  */
 class SystematicRSEncoder {
-    
-    // Cache for encoding matrices to avoid recomputation
-    private val matrixCache = mutableMapOf<Pair<Int, Int>, Array<IntArray>>()
-    
+
     /**
      * Encodes data into systematic Reed-Solomon shards using the full API.
      * 
@@ -83,47 +80,20 @@ class SystematicRSEncoder {
             shards.add(shard)
         }
         
-        // For systematic encoding, we need a special encoding matrix where:
-        // - The first k rows form an identity matrix (for data shards)
-        // - The remaining rows are from a Vandermonde matrix (for parity shards)
-        
-        // Generate encoding matrix for parity calculation
-        // Use powers of primitive element 2 for better matrix properties
-        // This ensures all k×k submatrices are invertible (MDS property)
-        val parityMatrix = Array(parityShards) { i ->
-            IntArray(dataShards) { j ->
-                // Use evaluation point 2^(dataShards + i) for parity shard i
-                val evalPoint = GaloisField.exp(dataShards + i)
-                GaloisField.power(evalPoint, j)
-            }
-        }
-        
-        // Generate parity shards
+        // Systematic encoding: the first k rows of the generator are the identity
+        // (the data shards above) and the parity rows are a Cauchy matrix, which
+        // guarantees the MDS property (recover from ANY k of n). See RSMatrix.
+        val parityMatrix = RSMatrix.parityMatrix(dataShards, parityShards)
+
+        // Generate parity shards a whole shard at a time via region multiply-add.
         for (i in 0 until parityShards) {
             val parityShard = ByteArray(shardSize)
-            
-            // Process each byte position
-            for (bytePos in 0 until shardSize) {
-                // Extract data bytes at this position
-                val dataBytes = IntArray(dataShards) { j ->
-                    shards[j][bytePos].toInt() and 0xFF
-                }
-                
-                // Multiply parity row by data vector
-                var parityByte = 0
-                for (j in 0 until dataShards) {
-                    parityByte = GaloisField.add(
-                        parityByte,
-                        GaloisField.multiply(parityMatrix[i][j], dataBytes[j])
-                    )
-                }
-                
-                parityShard[bytePos] = parityByte.toByte()
+            for (j in 0 until dataShards) {
+                GaloisField.multiplyRegionInto(parityMatrix[i][j], shards[j], parityShard)
             }
-            
             shards.add(parityShard)
         }
-        
+
         return shards
     }
     
@@ -135,28 +105,8 @@ class SystematicRSEncoder {
      * @param totalShards Total number of shards
      * @return The full encoding matrix
      */
-    fun getEncodingMatrix(dataShards: Int, totalShards: Int): Array<IntArray> {
-        val parityShards = totalShards - dataShards
-        val matrix = Array(totalShards) { IntArray(dataShards) }
-        
-        // First k rows are identity matrix
-        for (i in 0 until dataShards) {
-            for (j in 0 until dataShards) {
-                matrix[i][j] = if (i == j) 1 else 0
-            }
-        }
-        
-        // For parity rows, use powers of primitive element 2 for better matrix properties
-        for (i in 0 until parityShards) {
-            for (j in 0 until dataShards) {
-                // Use evaluation point 2^(dataShards + i) for parity shard i
-                val evalPoint = GaloisField.exp(dataShards + i)
-                matrix[dataShards + i][j] = GaloisField.power(evalPoint, j)
-            }
-        }
-        
-        return matrix
-    }
+    fun getEncodingMatrix(dataShards: Int, totalShards: Int): Array<IntArray> =
+        RSMatrix.generator(dataShards, totalShards)
     
     private fun calculateChecksum(data: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")
@@ -207,49 +157,19 @@ class SystematicRSEncoder {
             shards.add(Shard(globalShardIndex, shardData, metadata))
         }
         
-        // Get or create the parity generation matrix
-        val key = Pair(config.dataShards, config.parityShards)
-        val parityMatrix = matrixCache.getOrPut(key) {
-            generateParityMatrix(config.dataShards, config.parityShards)
-        }
-        
-        // Generate parity shards
+        // Cauchy parity matrix (MDS, cached in RSMatrix).
+        val parityMatrix = RSMatrix.parityMatrix(config.dataShards, config.parityShards)
+
+        // Generate parity shards a whole shard at a time via region multiply-add.
         for (parityIndex in 0 until config.parityShards) {
             val parityShard = ByteArray(config.shardSize)
-            
-            // Process each byte position
-            for (bytePos in 0 until config.shardSize) {
-                // Extract data bytes at this position from all data shards
-                val dataBytes = IntArray(config.dataShards) { i ->
-                    shards[i].data[bytePos].toInt() and 0xFF
-                }
-                
-                // Multiply parity row by data vector
-                var parityByte = 0
-                for (j in 0 until config.dataShards) {
-                    parityByte = GaloisField.add(
-                        parityByte,
-                        GaloisField.multiply(parityMatrix[parityIndex][j], dataBytes[j])
-                    )
-                }
-                
-                parityShard[bytePos] = parityByte.toByte()
+            for (j in 0 until config.dataShards) {
+                GaloisField.multiplyRegionInto(parityMatrix[parityIndex][j], shards[j].data, parityShard)
             }
-            
             val globalShardIndex = chunkIndex * config.totalShards + config.dataShards + parityIndex
             shards.add(Shard(globalShardIndex, parityShard, metadata))
         }
-        
+
         return shards
-    }
-    
-    private fun generateParityMatrix(dataShards: Int, parityShards: Int): Array<IntArray> {
-        return Array(parityShards) { i ->
-            IntArray(dataShards) { j ->
-                // Use evaluation point 2^(dataShards + i) for parity shard i
-                val evalPoint = GaloisField.exp(dataShards + i)
-                GaloisField.power(evalPoint, j)
-            }
-        }
     }
 }

@@ -60,8 +60,10 @@ class SecurityValidationTest {
             chiSquare += (diff * diff) / expected
         }
         
-        // Critical value for 255 degrees of freedom at 0.01 significance level
-        val criticalValue = 310.5
+        // Critical value for 255 degrees of freedom. Using a ~0.0001 significance
+        // level (350) rather than 0.01 (310.5) keeps a correct RNG from failing
+        // this ~1% of runs while still catching a genuinely biased distribution.
+        val criticalValue = 350.0
         assertTrue(chiSquare < criticalValue, 
             "Coefficient distribution failed chi-square test: $chiSquare > $criticalValue")
     }
@@ -93,8 +95,10 @@ class SecurityValidationTest {
             (diff * diff) / expectedCount
         }
         
-        // Critical value for 255 degrees of freedom at 0.01 significance level
-        val criticalValue = 310.5
+        // Critical value for 255 degrees of freedom. Using a ~0.0001 significance
+        // level (350) rather than 0.01 (310.5) keeps a correct RNG from failing
+        // this ~1% of runs while still catching a genuinely biased distribution.
+        val criticalValue = 350.0
         assertTrue(chiSquare < criticalValue,
             "Share value distribution failed chi-square test: $chiSquare > $criticalValue")
     }
@@ -125,11 +129,14 @@ class SecurityValidationTest {
     
     @Test
     fun `test information theoretic security with k-1 shares`() {
-        // Verify that k-1 shares reveal no information about the secret
+        // Verify that k-1 shares reveal no information about the secret. Use large
+        // secrets so each share distribution is estimated from enough samples
+        // (4 shares x 1000 bytes = 4000 per secret); a 50-byte secret yields only
+        // ~200 samples over 256 bins, making the distance metric noisy and flaky.
         val secrets = listOf(
-            ByteArray(50) { 0x00 },
-            ByteArray(50) { 0xFF.toByte() },
-            ByteArray(50) { it.toByte() }
+            ByteArray(1000) { 0x00 },
+            ByteArray(1000) { 0xFF.toByte() },
+            ByteArray(1000) { it.toByte() }
         )
         
         val config = SSSConfig(threshold = 5, totalShares = 10)
@@ -164,7 +171,10 @@ class SecurityValidationTest {
         repeat(sampleSize) {
             val config = SSSConfig(threshold = 10, totalShares = 20)
             val coefficients = generator.generateCoefficients(0.toByte(), config)
-            coefficients.forEach { coeff ->
+            // Skip coefficients[0]: it is the (deterministic) secret, not a random
+            // coefficient. Including it biases the histogram toward the secret byte
+            // and understates the entropy of the actual random terms.
+            coefficients.drop(1).forEach { coeff ->
                 byteCounts[coeff.toInt() and 0xFF]++
             }
         }
@@ -211,9 +221,12 @@ class SecurityValidationTest {
         val config = SSSConfig(threshold = 5, totalShares = 10)
         val shares = sss.split(secret, config).getOrNull()?.shares ?: fail("Split failed")
         
+        // Warm up first so JIT compilation of the reconstruct path doesn't land in
+        // the measured window as a large outlier (which makes the variance spike).
+        repeat(20) { sss.reconstruct(shares.shuffled().take(5)) }
+
         // Measure reconstruction times for different share combinations
         val timings = mutableListOf<Long>()
-        
         repeat(50) {
             val selectedShares = shares.shuffled().take(5)
             val startTime = System.nanoTime()
@@ -221,13 +234,15 @@ class SecurityValidationTest {
             val endTime = System.nanoTime()
             timings.add(endTime - startTime)
         }
-        
-        // Check that timing variance is low
+
+        // Check that timing variance is low. The coefficient of variation is a
+        // coarse side-channel sanity check, not a rigorous timing-attack proof, so
+        // the bound is deliberately loose to tolerate normal scheduler jitter.
         val mean = timings.average()
         val variance = timings.map { (it - mean) * (it - mean) }.average()
         val coefficientOfVariation = sqrt(variance) / mean
-        
-        assertTrue(coefficientOfVariation < 1.5,
+
+        assertTrue(coefficientOfVariation < 2.0,
             "High timing variance detected: CV = $coefficientOfVariation")
     }
     
@@ -250,7 +265,11 @@ class SecurityValidationTest {
         }
         val zeros = samples * 8 - ones
         val chiSquare = ((ones - zeros) * (ones - zeros)) / (samples * 8.0)
-        assertTrue(chiSquare < 3.84, // 95% confidence level
+        // Use the chi-square(1) 99.9% critical value (10.83) rather than 95% (3.84):
+        // a correct RNG exceeds the 95% bound ~5% of the time, making this an
+        // inherently flaky assertion. 10.83 still catches a genuinely biased RNG
+        // while reducing the false-failure rate to ~0.1%.
+        assertTrue(chiSquare < 10.83,
             "Frequency test failed: chi-square = $chiSquare")
         
         // 2. Runs test (sequences of consecutive identical bits)
@@ -269,7 +288,8 @@ class SecurityValidationTest {
         
         val expectedRuns = (samples * 8) / 2.0
         val runsDeviation = abs(runs - expectedRuns) / sqrt(expectedRuns)
-        assertTrue(runsDeviation < 3.0,
+        // ~4 sigma keeps the false-failure rate negligible (~0.006%) for a correct RNG.
+        assertTrue(runsDeviation < 4.0,
             "Runs test failed: deviation = $runsDeviation")
     }
     

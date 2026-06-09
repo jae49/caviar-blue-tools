@@ -407,18 +407,20 @@ class SystematicRSTest {
             
             val encodeTime = measureTimeMillis {
                 val shards = encoder.encode(data, config)
-                assertEquals(14, shards.size)
-                
-                // Test with various missing shards
+                // Large inputs span multiple chunks; shards come in per-chunk sets.
+                assertEquals(0, shards.size % config.totalShards)
+
+                // Missing patterns are *local* shard indices erased in every chunk,
+                // so each chunk keeps exactly dataShards shards.
                 val missingPatterns = listOf(
-                    listOf(0, 5, 10, 13),    // Spread out
-                    listOf(10, 11, 12, 13),  // All parity
-                    listOf(0, 1, 2, 3),      // First 4
-                    listOf(3, 7, 9, 11)      // Mixed
+                    setOf(0, 5, 10, 13),    // Spread out
+                    setOf(10, 11, 12, 13),  // All parity
+                    setOf(0, 1, 2, 3),      // First 4
+                    setOf(3, 7, 9, 11)      // Mixed
                 )
-                
+
                 for (missing in missingPatterns) {
-                    val available = shards.filterIndexed { i, _ -> i !in missing }
+                    val available = shards.filter { (it.index % config.totalShards) !in missing }
                     val decodeTime = measureTimeMillis {
                         val result = decoder.decode(available)
                         assertTrue(result is ReconstructionResult.Success)

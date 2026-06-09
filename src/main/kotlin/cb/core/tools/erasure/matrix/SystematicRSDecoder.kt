@@ -126,31 +126,19 @@ class SystematicRSDecoder {
         val invertedMatrix = MatrixUtils.invertMatrix(subMatrix)
             ?: return null // Matrix is singular, cannot reconstruct
         
-        // Reconstruct data shards
-        val reconstructedShards = Array(dataShards) { ByteArray(shardSize) }
-        
-        // Process each byte position
-        for (bytePos in 0 until shardSize) {
-            // Extract bytes at this position from selected shards
-            val shardBytes = IntArray(dataShards) { i ->
-                selectedShards[i][bytePos].toInt() and 0xFF
-            }
-            
-            // Multiply inverted matrix by shard bytes to get original data bytes
-            val dataBytes = MatrixUtils.multiplyMatrixVector(invertedMatrix, shardBytes)
-            
-            // Store reconstructed bytes
-            for (i in 0 until dataShards) {
-                reconstructedShards[i][bytePos] = dataBytes[i].toByte()
-            }
-        }
-        
-        // Concatenate reconstructed data shards
+        // Reconstruct each data shard a whole shard at a time:
+        //   data[i] = sum_j invertedMatrix[i][j] * selectedShard[j]
+        // using region multiply-add (one table lookup per byte, no per-byte
+        // allocation and no coroutine dispatch).
         val result = ByteArray(dataShards * shardSize)
         for (i in 0 until dataShards) {
-            reconstructedShards[i].copyInto(result, i * shardSize)
+            val out = ByteArray(shardSize)
+            for (j in 0 until dataShards) {
+                GaloisField.multiplyRegionInto(invertedMatrix[i][j], selectedShards[j], out)
+            }
+            out.copyInto(result, i * shardSize)
         }
-        
+
         return result
     }
     
@@ -162,28 +150,8 @@ class SystematicRSDecoder {
      * @param totalShards Total number of shards
      * @return The full encoding matrix
      */
-    private fun getEncodingMatrix(dataShards: Int, totalShards: Int): Array<IntArray> {
-        val parityShards = totalShards - dataShards
-        val matrix = Array(totalShards) { IntArray(dataShards) }
-        
-        // First k rows are identity matrix
-        for (i in 0 until dataShards) {
-            for (j in 0 until dataShards) {
-                matrix[i][j] = if (i == j) 1 else 0
-            }
-        }
-        
-        // For parity rows, use powers of primitive element 2 to match encoder
-        for (i in 0 until parityShards) {
-            for (j in 0 until dataShards) {
-                // Use evaluation point 2^(dataShards + i) for parity shard i
-                val evalPoint = GaloisField.exp(dataShards + i)
-                matrix[dataShards + i][j] = GaloisField.power(evalPoint, j)
-            }
-        }
-        
-        return matrix
-    }
+    private fun getEncodingMatrix(dataShards: Int, totalShards: Int): Array<IntArray> =
+        RSMatrix.generator(dataShards, totalShards)
     
     private fun calculateChecksum(data: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256")

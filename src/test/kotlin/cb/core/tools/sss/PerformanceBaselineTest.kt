@@ -211,7 +211,9 @@ class PerformanceBaselineTest {
     @Test
     fun `establish throughput baseline for target performance`() {
         val targetThroughputMBps = 1.0 // 1 MB/s as per requirements
-        val testSizes = listOf(1024, 10240, 102400) // 1KB, 10KB, 100KB
+        // The library caps secrets at SSSConfig.MAX_SECRET_SIZE (1024 bytes); the
+        // previous 10KB/100KB sizes could never be split, so this never really ran.
+        val testSizes = listOf(256, 512, 1024)
         val config = SSSConfig(3, 5)
         val iterations = 20
         

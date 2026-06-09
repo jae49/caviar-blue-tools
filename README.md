@@ -7,11 +7,10 @@ A comprehensive Kotlin library providing enterprise-grade cryptographic and data
 ### Reed-Solomon Erasure Coding (RSEC)
 High-performance erasure coding library with systematic matrix-based implementation:
 - **Guaranteed reconstruction**: Recovers data from ANY k valid shards out of n total
-- **Matrix-based algorithm**: Uses Vandermonde/Cauchy matrices in GF(256)
-- **Configurable redundancy**: Support for up to 255 total shards (data + parity)
-- **High throughput**: 25-175 MB/s encoding performance
+- **MDS algorithm**: Cauchy generator matrix in GF(256) — every k-of-n subset is recoverable
+- **Configurable redundancy**: Support for up to 256 total shards (data + parity)
+- **High throughput**: ~100–450 MB/s encode, ~80–330 MB/s decode (table-based region multiply)
 - **Streaming support**: Memory-efficient processing of large files with Kotlin coroutines
-- **Optimized implementations**: Parallel processing and specialized encoders
 - **Complete reliability**: No shard combination limitations
 
 ### Shamir Secret Sharing (SSS)
@@ -22,13 +21,22 @@ Cryptographically secure secret splitting and reconstruction:
 - **Secure memory handling**: Multi-pass clearing of sensitive data
 - **Flexible size support**: Secrets up to 1024 bytes, up to 128 shares
 
+### Application Settings System
+Database-backed configuration management with type-safe APIs:
+- **Application metadata**: Store app name, version, and schema version
+- **Runtime properties**: Add/retrieve/delete settings with automatic type conversion
+- **Multiple data types**: String, Int, Long, Double, Boolean, and JSON support
+- **Generic SQL**: Compatible with PostgreSQL, SQLite, and SQL Server
+- **Type safety**: Shields developers from manual type conversions
+- **Transaction support**: Atomic operations with automatic rollback
+
 ## Installation
 
 Add to your Gradle dependencies:
 
 ```kotlin
 dependencies {
-    implementation("cb.core:caviar-blue-tools:1.0.0")
+    implementation("cb.core:caviar-blue-tools:1.1.5")
 }
 ```
 
@@ -90,19 +98,47 @@ val collectedShares = shares.take(3)
 val reconstructed = sss.reconstructString(collectedShares).getOrThrow()
 ```
 
-## Advanced Features
-
-### High-Performance Erasure Coding
+### Application Settings System
 
 ```kotlin
-// Use optimized encoder for better performance
+import cb.core.tools.settings.ApplicationSettingsManager
+import cb.core.tools.settings.database.SimpleConnectionWrapper
+
+// Setup database connection
+val connection = DriverManager.getConnection("jdbc:sqlite:settings.db")
+val settingsManager = ApplicationSettingsManager(SimpleConnectionWrapper(connection))
+
+// Initialize schema
+settingsManager.initializeSchema()
+
+// Register application
+settingsManager.registerApplication("MyApp", "1.0.0", "1.0")
+
+// Store typed settings
+settingsManager.setString("app.name", "My Application")
+settingsManager.setInt("max.connections", 100)
+settingsManager.setBoolean("debug.enabled", true)
+settingsManager.setJson("db.config", """{"host":"localhost","port":5432}""")
+
+// Retrieve with type safety and defaults
+val appName = settingsManager.getString("app.name").getOrNull()
+val maxConn = settingsManager.getInt("max.connections", 50).getOrNull() ?: 50
+val debugMode = settingsManager.getBoolean("debug.enabled", false).getOrNull() ?: false
+```
+
+## Advanced Features
+
+### Space-Efficient and Streaming Erasure Coding
+
+```kotlin
 val config = EncodingConfig(
     dataShards = 10,
     parityShards = 6
 )
 
-val optimizedEncoder = OptimizedReedSolomonEncoder()
-val shards = optimizedEncoder.encode(largeData, config)
+// Space-efficient encoder: dynamic shard sizing to minimize padding overhead
+val spaceEfficientEncoder = SpaceEfficientReedSolomonEncoder()
+val shards = spaceEfficientEncoder.encode(largeData, config)
 
 // Stream large files
 val streamEncoder = StreamingEncoder()
@@ -129,12 +165,10 @@ shares.forEach { share ->
 
 ## Performance
 
-### Reed-Solomon Benchmarks
-- **Standard encoding**: 25-50 MB/s
-- **Optimized encoding**: 45-175 MB/s
-- **20-shard specialized**: 170+ MB/s
-- **Decoding**: 50-150 MB/s
-- **Reliability**: 100% reconstruction guarantee from ANY k shards
+### Reed-Solomon Benchmarks (measured, 256 KB, maximum erasures)
+- **Encoding**: ~100–450 MB/s depending on configuration
+- **Decoding**: ~80–330 MB/s depending on configuration and erasure count
+- **Reliability**: 100% reconstruction guarantee from ANY k shards (Cauchy/MDS)
 
 ### Shamir Secret Sharing
 - **Splitting**: ~1ms for 1KB secret with 10 shares
@@ -169,12 +203,13 @@ gradle test slowTests
 - [Shamir Secret Sharing Usage Guide](docs/sss_usage_guide.md)
 - [SSS Security Guide](docs/sss_security_guide.md)
 - [SSS Integration Examples](docs/sss_integration_examples.md)
+- [Application Settings Usage Guide](docs/settings-usage-guide.md)
 
 ## Requirements
 
-- Kotlin 1.8+
-- JVM 11+
-- Gradle 7.0+
+- Kotlin 2.4+
+- JDK 25 (the build uses a `jvmToolchain(25)`)
+- Gradle 9+
 
 ## License
 

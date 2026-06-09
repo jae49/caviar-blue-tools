@@ -1,4 +1,4 @@
-# CLAUDE.md
+65# CLAUDE.md
 
 ## Project Architecture
 
@@ -45,17 +45,19 @@ The project includes a comprehensive and **fully functional** Reed-Solomon erasu
   - **Performance**: >200M additions/sec, >71M multiplications/sec
   - Mathematical correctness verified (field properties, edge cases)
 
-#### Matrix Operations
-- **Location**: `cb.core.tools.erasure.matrix.MatrixUtils`
-- **Status**: ✅ **COMPLETE** - Systematic algorithm fully functional
-- **Purpose**: Matrix operations for Reed-Solomon encoding/decoding
+#### Generator Matrix (single source of truth)
+- **Location**: `cb.core.tools.erasure.matrix.RSMatrix`
+- **Status**: ✅ **COMPLETE** - used by both the encoder and decoder
+- **Purpose**: Builds the systematic `[I | parity]` generator. The parity block is a
+  **Cauchy matrix**, which is provably MDS (every square submatrix is non-singular).
 - **Key Features**:
-  - Vandermonde and Cauchy matrix generation for encoding
-  - Matrix inversion using Gaussian elimination in GF(256)
-  - **Guaranteed k-out-of-n reconstruction** from ANY k valid shards
-  - Optimized matrix multiplication with loop unrolling and caching
-  - Parallel processing for large matrices
-  - Support for up to 255 total shards (GF(256) limitation)
+  - **Guaranteed k-out-of-n reconstruction** from ANY k valid shards (Cauchy ⇒ MDS).
+    A plain stacked Vandermonde is NOT MDS over GF(256) and fails on some erasure
+    patterns; `RSMatrixMdsTest` exhaustively guards this property.
+  - Region multiply-add (`GaloisField.multiplyRegionInto`) multiplies a whole shard
+    by a field constant with one table lookup per byte — the encode/decode hot path.
+  - Matrix inversion via Gaussian elimination in GF(256) lives in `MatrixUtils`.
+  - Support for up to 256 total shards (GF(256) limitation).
 
 ### Testing Infrastructure
 - **Unit Tests**: All tests passing
@@ -80,14 +82,14 @@ gradle test --tests "*MathBenchmark*"
 
 The library implements systematic Reed-Solomon erasure coding:
 
-- **Algorithm**: Matrix-based systematic encoding using Vandermonde/Cauchy matrices
+- **Algorithm**: Matrix-based systematic encoding with a **Cauchy** parity matrix (MDS)
 - **Status**: ✅ **COMPLETE** - All phases implemented
 - **Key Features**: 
-  - **Guaranteed reconstruction from ANY k valid shards**
+  - **Guaranteed reconstruction from ANY k valid shards** (Cauchy generator is MDS)
   - No shard combination limitations
-  - Excellent parallelization for multi-core systems
+  - Table-based region multiply (`GaloisField.multiplyRegionInto`) on the hot path
   - Robust error handling and validation
-- **Performance**: 25-175 MB/s depending on configuration and optimizations
+- **Performance**: ~100-450 MB/s encode, ~80-330 MB/s decode (varies by config)
 - **Mathematical Foundation**: GF(256) arithmetic with matrix operations
 
 ### Implementation Status
@@ -108,40 +110,45 @@ The library implements systematic Reed-Solomon erasure coding:
   - Full async support with coroutines
   - 7 streaming tests added
 - ✅ **Phase 4**: Performance optimization and documentation (**COMPLETE**)
-  - Created OptimizedReedSolomonEncoder with parallel processing
-  - Created RobustReedSolomonDecoder with enhanced error handling
+  - Table-based region multiply for whole-shard GF(256) operations
   - Added comprehensive performance benchmarks
   - Created extensive test suite for various data sizes
   - Added complete usage and API documentation
   - Implemented integration test for 16K data with 8+6 configuration
+- ✅ **2026-06 overhaul**: Switched the parity matrix from a (non-MDS) stacked
+  Vandermonde to a Cauchy matrix in the shared `RSMatrix`; replaced per-byte
+  multiply + `runBlocking`-per-row/byte with region multiply; **deleted** the
+  redundant/broken `performance/` encoders (`OptimizedReedSolomonEncoder`,
+  `TwentyShardOptimizedEncoder`, `OptimizedPolynomialMath`, `RobustReedSolomonDecoder`),
+  which built parity matrices incompatible with the decoder.
 
 ### Current Project Status (All Phases Complete)
 - **Build Status**: ✅ BUILD SUCCESSFUL - All code compiles without errors
 - **Test Coverage**: 
-  - ✅ 59 fast tests passing in under 30 seconds
+  - ✅ Fast tests (`gradle test`) pass in under 30 seconds
+  - ✅ `RSMatrixMdsTest` exhaustively verifies any-k-of-n reconstruction
   - ✅ Integration test for 16K data with 8+6 configuration implemented
-  - ⚡ Slow tests (benchmarks, large data) available via `gradle slowTests`
+  - ⚡ Slow tests (benchmarks, large data) run via `gradle slowTests`
+    (this task previously did nothing — it was registered without a test
+    classpath; now wired up to the test source set)
 - **Core Features**: 
   - ✅ Systematic Reed-Solomon algorithm with guaranteed k-out-of-n reconstruction
-  - ✅ Can recover from ANY k valid shards (no combination limitations)
+  - ✅ Can recover from ANY k valid shards (Cauchy/MDS, no combination limitations)
   - ✅ Erasure recovery up to parity shard count
   - ✅ Streaming support with Kotlin coroutines
   - ✅ Memory-efficient processing
-  - ✅ Parallel encoding optimization
   - ✅ Robust error handling and validation
-- **Performance**: 
+- **Performance** (measured, 256 KB, max erasures):
   - GaloisField operations: >200M ops/sec
-  - Standard encoding throughput: 25-50 MB/s (varies by configuration)
-  - Optimized encoding throughput: 45-175 MB/s (with specialized optimizations)
-  - 20-shard configurations: **25-175 MB/s** (exceeds 1 MB/s target by 25-175x)
-  - Decoding throughput: 50-150 MB/s (varies by erasure count)
+  - Encoding throughput: ~100-450 MB/s (varies by configuration)
+  - Decoding throughput: ~80-330 MB/s (varies by configuration/erasures)
 - **API Surface**:
   - `ReedSolomonEncoder.encode()` - Create erasure-coded shards
   - `ReedSolomonDecoder.decode()` - Reconstruct from partial shards
   - `StreamingEncoder.encodeStream()` - Process large files efficiently
   - `StreamingDecoder.decodeStream()` - Reconstruct streaming data
-  - `OptimizedReedSolomonEncoder` - High-performance parallel encoding
-  - `RobustReedSolomonDecoder` - Enhanced validation and error recovery
+  - `SpaceEfficientReedSolomonEncoder` - Dynamic shard sizing for minimal overhead
+  - `RSMatrix` - Shared Cauchy/MDS generator used by encoder and decoder
 - **Documentation**:
   - ✅ Complete usage guide: `docs/erasure-coding-usage.md`
   - ✅ API reference: `docs/erasure-coding-api.md`
@@ -156,22 +163,19 @@ src/
 │   ├── ReedSolomonDecoder.kt          # Main decoding class
 │   ├── math/
 │   │   └── GaloisField.kt             # GF(256) arithmetic operations
+│   ├── SpaceEfficientReedSolomonEncoder.kt  # Dynamic shard sizing
 │   ├── matrix/
-│   │   ├── MatrixUtils.kt             # Matrix operations for RS algorithm
+│   │   ├── RSMatrix.kt                # Shared Cauchy/MDS generator (single source)
+│   │   ├── MatrixUtils.kt             # Matrix inversion / submatrix helpers
 │   │   ├── SystematicRSEncoder.kt     # Systematic encoding implementation
 │   │   └── SystematicRSDecoder.kt     # Systematic decoding implementation
 │   ├── models/
 │   │   ├── EncodingConfig.kt          # Configuration data class
 │   │   ├── Shard.kt                   # Shard data model
 │   │   └── ReconstructionResult.kt    # Decoding result types
-│   ├── stream/
-│   │   ├── StreamingEncoder.kt        # Flow-based encoder
-│   │   └── StreamingDecoder.kt        # Flow-based decoder
-│   └── performance/
-│       ├── OptimizedReedSolomonEncoder.kt      # Parallel encoding
-│       ├── RobustReedSolomonDecoder.kt         # Enhanced error handling
-│       ├── OptimizedMatrixOperations.kt        # Cached matrix operations
-│       └── TwentyShardOptimizedEncoder.kt      # Specialized 20-shard encoder
+│   └── stream/
+│       ├── StreamingEncoder.kt        # Flow-based encoder
+│       └── StreamingDecoder.kt        # Flow-based decoder
 └── test/kotlin/cb/core/tools/erasure/
     ├── FastIntegrationTest.kt         # Quick integration tests
     ├── IntegrationTest.kt             # Complex scenarios (@Tag("slow"))
@@ -220,9 +224,9 @@ val result2 = decoder.decode(nonContiguous) // Guaranteed to work!
 val streamEncoder = StreamingEncoder()
 val shardFlow = streamEncoder.encodeStream(inputStream, config)
 
-// High-performance 20-shard encoding
-val twentyShardEncoder = TwentyShardOptimizedEncoder()
-val shards = twentyShardEncoder.encode(data, config) // 175+ MB/s throughput
+// Space-efficient encoding (dynamic shard sizing to minimize padding overhead)
+val spaceEfficient = SpaceEfficientReedSolomonEncoder()
+val efficientShards = spaceEfficient.encode(data, config)
 ```
 
 ### Testing Commands
@@ -245,19 +249,19 @@ gradle test --tests "*FastIntegrationTest*"
 
 The Reed-Solomon Erasure Coding library is fully implemented with:
 - Complete mathematical foundation using GF(256) arithmetic
-- **Systematic matrix-based algorithm guaranteeing reconstruction from ANY k valid shards**
-- Encoding/decoding with configurable redundancy (up to 255 total shards)
+- **Systematic matrix-based algorithm (Cauchy/MDS) guaranteeing reconstruction from ANY k valid shards**
+- A single shared generator (`RSMatrix`) used by both encoder and decoder
+- Table-based region multiply for fast whole-shard GF(256) operations
+- Encoding/decoding with configurable redundancy (up to 256 total shards)
 - Streaming support for large files using Kotlin coroutines
-- Performance optimizations including parallel processing
 - Comprehensive test suite with fast (<30s) and slow test separation
 - Full documentation including usage examples and API reference
 
 The library successfully handles the requested scenario of encoding 16K data into 8 data + 6 parity blocks and reconstructing from any 8 blocks, with no shard combination limitations.
 
-**Performance Highlights:**
-- Standard encoder: 25-50 MB/s
-- Optimized encoder: 45-175 MB/s with parallel processing
-- Specialized 20-shard encoder: 170+ MB/s with matrix caching and optimizations
+**Performance Highlights** (measured, 256 KB, maximum erasures):
+- Encode: ~100-450 MB/s depending on configuration
+- Decode: ~80-330 MB/s depending on configuration and erasure count
 
 ## Shamir Secret Sharing (SSS) Implementation
 
@@ -510,3 +514,141 @@ All 6 phases have been successfully completed with a production-ready Shamir Sec
 - ✅ Three detailed guides (usage, security, integration)
 - ✅ 12 working code examples
 - ✅ Ready for production deployment
+
+## Application Settings System Implementation
+
+### Overview
+The project now includes a comprehensive application settings system that provides database-backed configuration storage with type-safe APIs. This system allows applications to store and retrieve runtime properties with automatic type conversion.
+
+### Implementation Status (✅ COMPLETED - 2025-01-16)
+**Status**: All components implemented and fully tested
+
+**Completed Components**:
+- `cb.core.tools.settings.ApplicationSettingsManager` - High-level API for settings management
+- `cb.core.tools.settings.models.*` - Data models (ApplicationInfo, SettingsProperty, PropertyType, SettingsResult)
+- `cb.core.tools.settings.database.*` - Database connection management and schema definitions
+- `cb.core.tools.settings.repository.*` - Repository classes for database operations
+- Complete test suite with 29 passing tests
+
+### Key Features (All Implemented)
+- **Application Metadata Management**: Store app name, version, and schema version
+- **Runtime Property Storage**: Add/retrieve/delete settings with automatic type conversion
+- **Multiple Data Types**: String, Int, Long, Double, Boolean, and JSON support
+- **Generic SQL**: Compatible with PostgreSQL, SQLite, and SQL Server
+- **Type Safety**: Shields developers from manual type conversions
+- **Transaction Support**: Atomic operations with automatic rollback
+- **Functional Error Handling**: Result types for safe error handling
+
+### Database Schema
+The system creates two main tables:
+
+#### application_properties
+```sql
+CREATE TABLE application_properties (
+    application_name VARCHAR(255) NOT NULL,
+    application_version VARCHAR(100) NOT NULL,
+    db_schema_version VARCHAR(100) NOT NULL,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (application_name)
+);
+```
+
+#### settings_properties
+```sql
+CREATE TABLE settings_properties (
+    property_key VARCHAR(255) NOT NULL,
+    property_value TEXT,
+    property_type VARCHAR(50) NOT NULL,
+    description TEXT,
+    created_at BIGINT NOT NULL,
+    updated_at BIGINT NOT NULL,
+    PRIMARY KEY (property_key)
+);
+```
+
+### API Surface
+- `ApplicationSettingsManager.registerApplication()` - Register application metadata
+- `ApplicationSettingsManager.setString/Int/Long/Double/Boolean/Json()` - Type-safe property setters
+- `ApplicationSettingsManager.getString/Int/Long/Double/Boolean/Json()` - Type-safe property getters with defaults
+- `ApplicationSettingsManager.setProperty()` - Generic property setter with type inference
+- `ApplicationSettingsManager.deleteProperty()` - Remove properties
+- `ApplicationSettingsManager.getAllProperties()` - Retrieve all properties
+- `ApplicationSettingsManager.getPropertiesByType()` - Filter properties by type
+- `ApplicationSettingsManager.setProperties/getProperties()` - Batch operations
+
+### Usage Example
+```kotlin
+// Setup
+val connection = DriverManager.getConnection("jdbc:sqlite:settings.db")
+val settingsManager = ApplicationSettingsManager(SimpleConnectionWrapper(connection))
+settingsManager.initializeSchema()
+
+// Register application
+settingsManager.registerApplication("MyApp", "1.0.0", "1.0")
+
+// Store typed settings
+settingsManager.setString("app.name", "My Application")
+settingsManager.setInt("max.connections", 100)
+settingsManager.setBoolean("debug.enabled", true)
+settingsManager.setJson("db.config", """{"host":"localhost","port":5432}""")
+
+// Retrieve with type safety and defaults
+val appName = settingsManager.getString("app.name").getOrNull()
+val maxConn = settingsManager.getInt("max.connections", 50).getOrNull() ?: 50
+val debugMode = settingsManager.getBoolean("debug.enabled", false).getOrNull() ?: false
+```
+
+### Project Structure
+```
+src/main/kotlin/cb/core/tools/settings/
+├── ApplicationSettingsManager.kt        # High-level API (✅)
+├── database/
+│   ├── DatabaseConnection.kt            # Connection interface (✅)
+│   └── SettingsSchema.kt               # SQL schema definitions (✅)
+├── models/
+│   ├── ApplicationInfo.kt              # Application metadata model (✅)
+│   ├── PropertyType.kt                 # Property type enumeration (✅)
+│   ├── SettingsProperty.kt             # Property data model (✅)
+│   └── SettingsResult.kt               # Functional result types (✅)
+└── repository/
+    ├── ApplicationPropertiesRepository.kt  # App metadata repository (✅)
+    └── SettingsPropertiesRepository.kt     # Settings repository (✅)
+
+src/test/kotlin/cb/core/tools/settings/
+├── ApplicationSettingsManagerTest.kt   # 16 integration tests (✅)
+└── models/
+    ├── ApplicationInfoTest.kt          # 3 model tests (✅)
+    ├── PropertyTypeTest.kt             # 4 type tests (✅)
+    └── SettingsPropertyTest.kt         # 6 property tests (✅)
+
+docs/
+└── settings-usage-guide.md            # Complete usage guide (✅)
+```
+
+### Test Coverage
+- **29 tests passing** (100% success rate)
+- Integration tests with in-memory SQLite database
+- Model validation and type conversion tests
+- Error handling and edge case coverage
+- Database transaction and rollback testing
+
+### Implementation Summary
+The Application Settings System is fully implemented with:
+- ✅ Complete database-backed configuration management
+- ✅ Type-safe APIs with automatic conversion between Kotlin types and database storage
+- ✅ Support for String, Int, Long, Double, Boolean, and JSON data types
+- ✅ Generic SQL compatible with PostgreSQL, SQLite, and SQL Server
+- ✅ Functional error handling with Result types
+- ✅ Transaction support with automatic rollback
+- ✅ Comprehensive test suite with 29 passing tests
+- ✅ Complete documentation with usage examples
+- ✅ Ready for production use
+
+**Key Achievements**:
+- Shields developers from manual type conversions
+- Provides application metadata management (name, version, schema version)
+- Supports runtime property storage with full CRUD operations
+- Includes batch operations for efficiency
+- Maintains data integrity with transaction support
+- Offers flexible database connection management

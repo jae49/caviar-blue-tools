@@ -20,7 +20,6 @@ import cb.core.tools.erasure.ReedSolomonEncoder
 import cb.core.tools.erasure.ReedSolomonDecoder
 import cb.core.tools.erasure.models.EncodingConfig
 import cb.core.tools.erasure.models.ReconstructionResult
-import cb.core.tools.erasure.performance.OptimizedReedSolomonEncoder
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Assertions.*
@@ -29,244 +28,106 @@ import kotlin.system.measureNanoTime
 
 @Tag("slow")
 class TwentyShardPerformanceTest {
-    
+
+    private val configurations = listOf(
+        EncodingConfig(dataShards = 10, parityShards = 10),
+        EncodingConfig(dataShards = 12, parityShards = 8),
+        EncodingConfig(dataShards = 14, parityShards = 6),
+        EncodingConfig(dataShards = 16, parityShards = 4),
+    )
+
     @Test
     fun testTwentyShardPerformance() {
         println("\n=== 20 Shard Performance Test ===")
-        println("Target: 1 MB/s throughput")
         println("-".repeat(80))
-        
-        val dataSizes = listOf(
-            100 * 1024,     // 100 KB
-            500 * 1024,     // 500 KB
-            1024 * 1024,    // 1 MB
-            2 * 1024 * 1024 // 2 MB
-        )
-        
-        // Test various 20-shard configurations
-        val configurations = listOf(
-            EncodingConfig(dataShards = 10, parityShards = 10),   // 10+10
-            EncodingConfig(dataShards = 12, parityShards = 8),    // 12+8
-            EncodingConfig(dataShards = 14, parityShards = 6),    // 14+6
-            EncodingConfig(dataShards = 16, parityShards = 4)     // 16+4
-        )
-        
-        println("\nStandard Encoder Performance:")
+
+        val dataSizes = listOf(100 * 1024, 500 * 1024, 1024 * 1024, 2 * 1024 * 1024)
         testEncoderPerformance(ReedSolomonEncoder(), ReedSolomonDecoder(), dataSizes, configurations)
-        
-        println("\nOptimized Encoder Performance:")
-        val optimizedEncoder = OptimizedReedSolomonEncoder()
-        try {
-            testEncoderPerformance(optimizedEncoder, ReedSolomonDecoder(), dataSizes, configurations)
-        } finally {
-            optimizedEncoder.shutdown()
-        }
     }
-    
+
     @Test
     fun test1MBWith20ShardsDetailed() {
         println("\n=== Detailed 1MB with 20 Shards Test ===")
         println("-".repeat(80))
-        
+
         val dataSize = 1024 * 1024 // 1 MB
         val config = EncodingConfig(dataShards = 12, parityShards = 8) // 12+8 = 20 shards
         val data = ByteArray(dataSize) { Random.nextBytes(1)[0] }
-        
-        // Test standard encoder
-        println("Standard Encoder:")
-        val standardEncoder = ReedSolomonEncoder()
-        val standardDecoder = ReedSolomonDecoder()
-        
-        // Warm up
-        standardEncoder.encode(data, config)
-        
-        // Measure encoding
-        val encodingTimes = mutableListOf<Long>()
-        repeat(5) {
-            val time = measureNanoTime {
-                standardEncoder.encode(data, config)
-            }
-            encodingTimes.add(time)
-        }
-        
-        val avgEncodingTime = encodingTimes.average() / 1_000_000.0 // ms
-        val encodingThroughput = 1.0 / (avgEncodingTime / 1000.0) // MB/s
-        
-        println("  Encoding: ${String.format("%.2f", avgEncodingTime)}ms (${String.format("%.2f", encodingThroughput)} MB/s)")
-        
-        // Test decoding with various erasure patterns
-        val shards = standardEncoder.encode(data, config)
-        val erasureCounts = listOf(1, 2, 4, 6, 8)
-        
-        println("  Decoding performance by erasure count:")
-        for (erasureCount in erasureCounts) {
-            val decodingTimes = mutableListOf<Long>()
-            var decodingSuccessful = true
-            
-            try {
-                repeat(3) {
-                    val availableShards = shards.shuffled(Random).drop(erasureCount)
-                    val time = measureNanoTime {
-                        val result = standardDecoder.decode(availableShards)
-                        if (result !is ReconstructionResult.Success) {
-                            decodingSuccessful = false
-                            println("    Warning: Decoding failed with $erasureCount erasures")
-                        }
-                    }
-                    if (decodingSuccessful) {
-                        decodingTimes.add(time)
-                    }
-                }
-                
-                if (decodingSuccessful && decodingTimes.isNotEmpty()) {
-                    val avgDecodingTime = decodingTimes.average() / 1_000_000.0 // ms
-                    val decodingThroughput = 1.0 / (avgDecodingTime / 1000.0) // MB/s
-                    
-                    println("    $erasureCount erasures: ${String.format("%.2f", avgDecodingTime)}ms (${String.format("%.2f", decodingThroughput)} MB/s)")
-                } else {
-                    println("    $erasureCount erasures: FAILED")
-                }
-            } catch (e: Exception) {
-                println("    $erasureCount erasures: ERROR - ${e.message}")
-            }
-        }
-        
-        // Test optimized encoder
-        println("\nOptimized Encoder:")
-        val optimizedEncoder = OptimizedReedSolomonEncoder()
-        
-        try {
-            // Warm up
-            optimizedEncoder.encode(data, config)
-            
-            val optimizedTimes = mutableListOf<Long>()
-            repeat(5) {
-                val time = measureNanoTime {
-                    optimizedEncoder.encode(data, config)
-                }
-                optimizedTimes.add(time)
-            }
-            
-            val avgOptimizedTime = optimizedTimes.average() / 1_000_000.0 // ms
-            val optimizedThroughput = 1.0 / (avgOptimizedTime / 1000.0) // MB/s
-            
-            println("  Encoding: ${String.format("%.2f", avgOptimizedTime)}ms (${String.format("%.2f", optimizedThroughput)} MB/s)")
-            println("  Speedup: ${String.format("%.2f", avgEncodingTime / avgOptimizedTime)}x")
-            
-            if (optimizedThroughput >= 1.0) {
-                println("  ✓ Achieved target throughput of 1 MB/s!")
-            } else {
-                println("  ✗ Below target throughput (need ${String.format("%.2f", 1.0 / optimizedThroughput)}x improvement)")
-            }
-        } finally {
-            optimizedEncoder.shutdown()
-        }
-    }
-    
-    @Test
-    fun profileEncodingBottlenecks() {
-        println("\n=== Profiling Encoding Bottlenecks ===")
-        println("-".repeat(80))
-        
-        val config = EncodingConfig(dataShards = 12, parityShards = 8)
-        val dataSize = 100 * 1024 // 100 KB for faster profiling
-        val data = ByteArray(dataSize) { Random.nextBytes(1)[0] }
-        
+
         val encoder = ReedSolomonEncoder()
-        
-        // Profile different stages
-        val shardCreationTime = measureNanoTime {
-            // Simulate data shard creation
-            val chunks = data.size / config.dataShards
-            for (i in 0 until config.dataShards) {
-                val start = i * chunks
-                val end = minOf(start + chunks, data.size)
-                data.copyOfRange(start, end)
+        val decoder = ReedSolomonDecoder()
+
+        encoder.encode(data, config) // warm up
+        val avgEncodingTime = (1..5).map { measureNanoTime { encoder.encode(data, config) } }
+            .average() / 1_000_000.0
+        val mb = dataSize / (1024.0 * 1024.0)
+        println("Encoding: ${"%.2f".format(avgEncodingTime)}ms (${"%.2f".format(mb / (avgEncodingTime / 1000.0))} MB/s)")
+
+        // Decode under increasing erasure counts; every case must recover exactly.
+        // Erase the first `erasureCount` data shards in every chunk (by local index),
+        // which always forces the matrix-inversion path and keeps k shards per chunk.
+        val shards = encoder.encode(data, config)
+        println("Decoding performance by erasure count:")
+        for (erasureCount in listOf(1, 2, 4, 6, 8)) {
+            val erased = (0 until erasureCount).toSet()
+            val available = shards.filter { (it.index % config.totalShards) !in erased }
+            val times = (1..3).map {
+                var result: ReconstructionResult? = null
+                val t = measureNanoTime { result = decoder.decode(available) }
+                assertTrue(result is ReconstructionResult.Success) { "Decode failed with $erasureCount erasures" }
+                assertArrayEquals(data, (result as ReconstructionResult.Success).data)
+                t
             }
+            val avg = times.average() / 1_000_000.0
+            println("  $erasureCount erasures: ${"%.2f".format(avg)}ms (${"%.2f".format(mb / (avg / 1000.0))} MB/s)")
         }
-        
-        println("Data shard creation: ${String.format("%.2f", shardCreationTime / 1_000_000.0)}ms")
-        
-        // Profile parity generation (this is usually the bottleneck)
-        val totalTime = measureNanoTime {
-            encoder.encode(data, config)
-        }
-        
-        val parityTime = totalTime - shardCreationTime
-        println("Parity generation: ${String.format("%.2f", parityTime / 1_000_000.0)}ms")
-        println("Parity generation %: ${String.format("%.1f", (parityTime.toDouble() / totalTime) * 100)}%")
     }
-    
+
     private fun testEncoderPerformance(
-        encoder: Any,
+        encoder: ReedSolomonEncoder,
         decoder: ReedSolomonDecoder,
         dataSizes: List<Int>,
-        configurations: List<EncodingConfig>
+        configurations: List<EncodingConfig>,
     ) {
         for (config in configurations) {
             println("\nConfiguration: ${config.dataShards}+${config.parityShards} (${config.totalShards} total)")
             println("-".repeat(60))
-            
+
             for (dataSize in dataSizes) {
                 val data = ByteArray(dataSize) { Random.nextBytes(1)[0] }
-                
-                // Warm up
-                when (encoder) {
-                    is ReedSolomonEncoder -> encoder.encode(data, config)
-                    is OptimizedReedSolomonEncoder -> encoder.encode(data, config)
-                }
-                
-                // Measure encoding
-                val encodingTimes = mutableListOf<Long>()
-                repeat(3) {
-                    val time = measureNanoTime {
-                        when (encoder) {
-                            is ReedSolomonEncoder -> encoder.encode(data, config)
-                            is OptimizedReedSolomonEncoder -> encoder.encode(data, config)
-                        }
-                    }
-                    encodingTimes.add(time)
-                }
-                
-                val avgEncodingTime = encodingTimes.average() / 1_000_000.0 // ms
+
+                encoder.encode(data, config) // warm up
+                val avgEncodingTime = (1..3).map { measureNanoTime { encoder.encode(data, config) } }
+                    .average() / 1_000_000.0
+
                 val dataSizeMB = dataSize / (1024.0 * 1024.0)
                 val encodingThroughput = dataSizeMB / (avgEncodingTime / 1000.0)
-                
-                // Measure decoding (with minimal erasures for consistency)
-                val shards = when (encoder) {
-                    is ReedSolomonEncoder -> encoder.encode(data, config)
-                    is OptimizedReedSolomonEncoder -> encoder.encode(data, config)
-                    else -> throw IllegalArgumentException("Unknown encoder type")
-                }
-                
-                val availableShards = shards.shuffled(Random).drop(2) // Drop 2 shards
-                
-                val decodingTimes = mutableListOf<Long>()
-                repeat(3) {
-                    val time = measureNanoTime {
-                        val result = decoder.decode(availableShards)
-                        assertTrue(result is ReconstructionResult.Success)
+
+                // Erase the maximum recoverable shards per chunk (the first
+                // parityShards data shards by local index) to exercise reconstruction.
+                val shards = encoder.encode(data, config)
+                val erased = (0 until config.parityShards).toSet()
+                val available = shards.filter { (it.index % config.totalShards) !in erased }
+
+                val decodingTimes = (1..3).map {
+                    var result: ReconstructionResult? = null
+                    val t = measureNanoTime { result = decoder.decode(available) }
+                    assertTrue(result is ReconstructionResult.Success) {
+                        "Decode failed for ${config.dataShards}+${config.parityShards}"
                     }
-                    decodingTimes.add(time)
+                    assertArrayEquals(data, (result as ReconstructionResult.Success).data)
+                    t
                 }
-                
-                val avgDecodingTime = decodingTimes.average() / 1_000_000.0 // ms
+                val avgDecodingTime = decodingTimes.average() / 1_000_000.0
                 val decodingThroughput = dataSizeMB / (avgDecodingTime / 1000.0)
-                
-                val dataSizeStr = when {
-                    dataSize < 1024 * 1024 -> "${dataSize / 1024}KB"
-                    else -> "${dataSize / (1024 * 1024)}MB"
-                }
-                
-                println(String.format(
-                    "%-6s | Enc: %6.2fms (%6.2f MB/s) | Dec: %6.2fms (%6.2f MB/s) %s",
-                    dataSizeStr,
-                    avgEncodingTime,
-                    encodingThroughput,
-                    avgDecodingTime,
-                    decodingThroughput,
-                    if (encodingThroughput >= 1.0) "✓" else ""
-                ))
+
+                val dataSizeStr = if (dataSize < 1024 * 1024) "${dataSize / 1024}KB" else "${dataSize / (1024 * 1024)}MB"
+                println(
+                    String.format(
+                        "%-6s | Enc: %6.2fms (%6.2f MB/s) | Dec: %6.2fms (%6.2f MB/s)",
+                        dataSizeStr, avgEncodingTime, encodingThroughput, avgDecodingTime, decodingThroughput,
+                    ),
+                )
             }
         }
     }

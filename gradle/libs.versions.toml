@@ -1,11 +1,11 @@
 [versions]
-coroutines = "1.10.1"
+coroutines = "1.11.0"
 jackson = "2.18.2"
 derby = "10.15.2.0"
 mssql = "12.8.1.jre11"
 postgresql = "42.7.4"
-sqlite = "3.46.0.1"
-junit = "5.11.3"
+sqlite = "3.53.2.0"
+junit = "6.1.0"
 poi = "5.3.0"
 slf4j = "2.0.16"
 http4k = "5.26.0.0"
@@ -39,7 +39,9 @@ mssql = {module="com.microsoft.sqlserver:mssql-jdbc", version.ref="mssql"}
 postgresql = {module="org.postgresql:postgresql", version.ref="postgresql"}
 sqlite = {module="org.xerial:sqlite-jdbc", version.ref="sqlite"}
 derby = {module="org.apache.derby:derby", version.ref="derby"}
+junit-bom = {module="org.junit:junit-bom", version.ref="junit"}
 junit = {module="org.junit.jupiter:junit-jupiter", version.ref="junit"}
+junit-platform-launcher = {module="org.junit.platform:junit-platform-launcher"}
 poi = {module="org.apache.poi:poi", version.ref="poi"}
 poi-ooxml = {module="org.apache.poi:poi-ooxml", version.ref="poi"}
 slf4j-api = {module="org.slf4j:slf4j-api", version.ref="slf4j"}

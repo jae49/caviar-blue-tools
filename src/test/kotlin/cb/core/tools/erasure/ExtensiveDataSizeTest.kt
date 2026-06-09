@@ -48,26 +48,33 @@ class ExtensiveDataSizeTest {
         // Create random data
         val originalData = ByteArray(dataSize) { Random.nextBytes(1)[0] }
         
-        // Encode
+        // Encode. Large inputs span multiple chunks, so the shard count is a
+        // whole multiple of totalShards (one set of shards per chunk).
         val shards = encoder.encode(originalData, config)
-        assertEquals(config.totalShards, shards.size, "Should produce correct number of shards")
-        
+        assertEquals(0, shards.size % config.totalShards, "Shards must come in complete per-chunk sets")
+        assertTrue(shards.size >= config.totalShards)
+
+        // Erasures must be applied by *local* shard index so that every chunk
+        // keeps exactly dataShards shards (a random global drop can starve one
+        // chunk below k even when the total count looks sufficient).
+        fun keepingErasedLocal(erasedLocal: Set<Int>) =
+            shards.filter { (it.index % config.totalShards) !in erasedLocal }
+
         // Test 1: All shards available
         val allShardsResult = decoder.decode(shards)
         assertTrue(allShardsResult is ReconstructionResult.Success)
         assertArrayEquals(originalData, (allShardsResult as ReconstructionResult.Success).data)
-        
-        // Test 2: Minimum shards available
-        val minShards = shards.shuffled(Random).take(dataShards)
+
+        // Test 2: Minimum shards available (erase parityShards data shards per chunk)
+        val minShards = keepingErasedLocal((0 until parityShards).toSet())
         val minShardsResult = decoder.decode(minShards)
         assertTrue(minShardsResult is ReconstructionResult.Success)
         assertArrayEquals(originalData, (minShardsResult as ReconstructionResult.Success).data)
-        
-        // Test 3: Random subset with some erasures
+
+        // Test 3: A subset with some erasures (erase a random set of local indices)
         val erasureCount = Random.nextInt(1, parityShards + 1)
-        val availableCount = config.totalShards - erasureCount
-        val randomSubset = shards.shuffled(Random).take(availableCount)
-        val randomResult = decoder.decode(randomSubset)
+        val erasedLocal = (0 until config.totalShards).shuffled(Random).take(erasureCount).toSet()
+        val randomResult = decoder.decode(keepingErasedLocal(erasedLocal))
         assertTrue(randomResult is ReconstructionResult.Success)
         assertArrayEquals(originalData, (randomResult as ReconstructionResult.Success).data)
     }
@@ -155,12 +162,15 @@ class ExtensiveDataSizeTest {
         for ((index, pattern) in patterns.withIndex()) {
             val shards = encoder.encode(pattern, config)
             
-            // Test with various erasure patterns
+            // Test with various erasure patterns. Each must leave at least
+            // dataShards shards (6+3 here, so at most 3 may be dropped). The old
+            // "every other shard" pattern kept only 5 of 9 — fewer than k — and
+            // was therefore unrecoverable by design.
             val erasurePatterns = listOf(
-                shards.drop(1),                    // Lost first shard
-                shards.dropLast(1),                // Lost last shard
-                shards.filterIndexed { i, _ -> i % 2 == 0 }, // Lost odd shards
-                shards.shuffled(Random).take(config.dataShards) // Random minimum
+                shards.drop(1),                                  // Lost first parity-or-data shard
+                shards.dropLast(1),                              // Lost last shard
+                shards.filterIndexed { i, _ -> i !in setOf(0, 4, 8) }, // Lost 3 (max) spread out
+                shards.take(config.dataShards)                   // Exactly the data shards
             )
             
             for ((erasureIndex, availableShards) in erasurePatterns.withIndex()) {

@@ -75,17 +75,22 @@ class SecretReconstructor {
         // Use only the first 'threshold' shares for reconstruction
         val sharesToUse = shares.take(threshold)
         val secretSize = sharesToUse.first().data.size
-        
-        // Reconstruct each byte of the secret
+
+        // The Lagrange basis weights l_i(0) depend only on the share indices, which
+        // are identical for every byte of the secret. Compute them once instead of
+        // re-deriving an O(k^2) basis for each of `secretSize` bytes.
+        val xs = IntArray(sharesToUse.size) { sharesToUse[it].index }
+        val weights = lagrangeWeightsAtZero(xs)
+
+        // Reconstruct each byte of the secret as f(0) = sum_i weight_i * y_i.
         val reconstructedSecret = ByteArray(secretSize)
         for (byteIndex in 0 until secretSize) {
-            val points = sharesToUse.map { share ->
-                Pair(share.index, share.data[byteIndex].toInt() and 0xFF)
+            var acc = 0
+            for (i in sharesToUse.indices) {
+                val yi = sharesToUse[i].data[byteIndex].toInt() and 0xFF
+                acc = GaloisField.add(acc, GaloisField.multiply(weights[i], yi))
             }
-            
-            // Use Lagrange interpolation to find f(0)
-            val secretByte = interpolateSecretByte(points)
-            reconstructedSecret[byteIndex] = secretByte.toByte()
+            reconstructedSecret[byteIndex] = acc.toByte()
         }
         
         // Validate against share metadata
@@ -99,40 +104,29 @@ class SecretReconstructor {
     }
     
     /**
-     * Interpolates a single byte of the secret using Lagrange interpolation.
-     * 
-     * Given points (x_i, y_i) representing share indices and values,
-     * reconstructs the polynomial and evaluates it at x = 0 to get the secret.
-     * 
-     * @param points List of (shareIndex, shareValue) pairs
-     * @return The interpolated secret byte value
+     * Computes the Lagrange basis weights `l_i(0)` for the given share indices.
+     *
+     * `l_i(0) = ∏_{j≠i} (0 - x_j) / ∏_{j≠i} (x_i - x_j)`. In GF(2^m) negation is a
+     * no-op (`-x == x`), so the numerator is simply `∏_{j≠i} x_j`. These weights
+     * depend only on which shares are present, so they are reused across every
+     * byte of the secret.
+     *
+     * @param xs The share indices (x-coordinates)
+     * @return The per-share weights, aligned with `xs`
      */
-    private fun interpolateSecretByte(points: List<Pair<Int, Int>>): Int {
-        // Use Lagrange interpolation to find f(0)
-        var result = 0
-        
-        for (i in points.indices) {
-            val (xi, yi) = points[i]
+    private fun lagrangeWeightsAtZero(xs: IntArray): IntArray {
+        val n = xs.size
+        return IntArray(n) { i ->
             var numerator = 1
             var denominator = 1
-            
-            // Calculate Lagrange basis polynomial l_i(0)
-            for (j in points.indices) {
+            for (j in 0 until n) {
                 if (i != j) {
-                    val xj = points[j].first
-                    // l_i(0) = ∏(0 - x_j) / ∏(x_i - x_j) for j ≠ i
-                    numerator = GaloisField.multiply(numerator, xj)
-                    denominator = GaloisField.multiply(denominator, GaloisField.subtract(xi, xj))
+                    numerator = GaloisField.multiply(numerator, xs[j])
+                    denominator = GaloisField.multiply(denominator, GaloisField.subtract(xs[i], xs[j]))
                 }
             }
-            
-            // Calculate y_i * l_i(0)
-            val coefficient = GaloisField.divide(numerator, denominator)
-            val term = GaloisField.multiply(yi, coefficient)
-            result = GaloisField.add(result, term)
+            GaloisField.divide(numerator, denominator)
         }
-        
-        return result
     }
     
     /**

@@ -22,9 +22,16 @@ object GaloisField {
     
     private val expTable = IntArray(512)  // Extended to avoid bounds checking
     private val logTable = IntArray(FIELD_SIZE)
-    
+
     init {
         initializeTables()
+    }
+
+    // Full 256x256 multiplication table (64 KB) built after the log/exp tables.
+    // Enables single-lookup "region" multiply-add over whole byte arrays, which is
+    // the core fast path for Reed-Solomon encode/decode.
+    private val mulTable: Array<ByteArray> = Array(FIELD_SIZE) { a ->
+        ByteArray(FIELD_SIZE) { b -> multiply(a, b).toByte() }
     }
     
     private fun initializeTables() {
@@ -78,6 +85,25 @@ object GaloisField {
     }
     
     fun isValid(value: Int): Boolean = value in 0 until FIELD_SIZE
+
+    /**
+     * Region multiply-accumulate: `dest[i] ^= coeff * src[i]` for `len` bytes,
+     * using a single table lookup per byte. This is the Reed-Solomon hot path —
+     * it multiplies an entire shard by a field constant at once instead of doing
+     * a per-byte log/exp multiply. A zero coefficient is a no-op.
+     *
+     * @param coeff GF(256) constant (0..255)
+     * @param src source bytes
+     * @param dest destination bytes (accumulated into, must be at least `len` long)
+     * @param len number of bytes to process (defaults to src.size)
+     */
+    fun multiplyRegionInto(coeff: Int, src: ByteArray, dest: ByteArray, len: Int = src.size) {
+        if (coeff == 0) return
+        val row = mulTable[coeff]
+        for (i in 0 until len) {
+            dest[i] = (dest[i].toInt() xor row[src[i].toInt() and 0xFF].toInt()).toByte()
+        }
+    }
     
     fun multiplyPolynomial(poly1: IntArray, poly2: IntArray): IntArray {
         val result = IntArray(poly1.size + poly2.size - 1)

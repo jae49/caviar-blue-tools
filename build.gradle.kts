@@ -1,5 +1,5 @@
 plugins {
-    kotlin("jvm") version "2.1.21"
+    kotlin("jvm") version "2.4.0"
     id("org.jetbrains.dokka") version "2.0.0"
 }
 
@@ -10,10 +10,14 @@ repositories {
     mavenCentral()
 }
 
+// Build and run on JDK 25 for both Kotlin and Java compilation tasks.
+kotlin {
+    jvmToolchain(25)
+}
+
 dependencies {
 
     // libs.versions.toml dependencies
-    testImplementation(libs.junit)
     implementation(libs.coroutines)
 
     // Align versions of all Kotlin components
@@ -22,8 +26,13 @@ dependencies {
     // Use the Kotlin JDK standard library.
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 
-    // Use Junit 5
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // JUnit (BOM aligns jupiter + platform launcher versions)
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit)
+    testRuntimeOnly(libs.junit.platform.launcher)
+
+    // SQLite JDBC driver for settings system tests
+    testImplementation(libs.sqlite)
 
 }
 
@@ -38,15 +47,20 @@ tasks.test {
 
 // Create a separate test task for slow/performance tests
 tasks.register<Test>("slowTests") {
-    useJUnitPlatform()
     group = "verification"
     description = "Runs slow integration and performance tests"
-    
+
+    // Wire up the test classes and runtime classpath. Without this a registered
+    // Test task has no inputs and reports NO-SOURCE (silently running nothing).
+    val testSourceSet = sourceSets.test.get()
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.runtimeClasspath
+
     // Include only tests marked with @Tag("slow")
     useJUnitPlatform {
         includeTags("slow")
     }
-    
+
     testLogging {
         events("passed", "skipped", "failed")
     }
